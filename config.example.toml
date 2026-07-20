@@ -1,0 +1,22 @@
+[telegram]
+bot_token = ""
+api_base_url = "https://api.telegram.org"
+allowed_chat_ids = [-1001234567890]
+alert_chat_id = -1001234567890
+
+[telegram.api_headers]
+# "X-Proxy-Token" = "example"
+
+[sub2api]
+base_url = "http://127.0.0.1:8080"
+admin_api_key = ""
+jwt = ""
+
+[monitor]
+# 可留空，启动后在 Telegram 群发送 /group 通过内联按钮选择
+group_id = ""
+interval_seconds = 300
+low_quota_percent = 10
+
+[database]
+path = "./s2a-maid.sqlite"

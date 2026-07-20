@@ -1,0 +1,8 @@
+node_modules/
+dist/
+config.toml
+sub2api-account-*.json
+accounts-export*.json
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
