@@ -1,0 +1,9 @@
+services:
+  s2a-maid:
+    image: ghcr.io/peach0x33a/s2a-maid:latest
+    container_name: s2a-maid
+    restart: unless-stopped
+    environment:
+      S2A_CONFIG_PATH: /data/config.toml
+    volumes:
+      - ./s2a-maid-data:/data

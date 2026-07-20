@@ -70,6 +70,23 @@ docker run -d \\
 
 数据库默认保存在 `/data/s2a-maid.sqlite`。不要把真实 `config.toml`、数据库或账户导出文件复制进镜像；它们应通过挂载或密钥管理提供。
 
+也可以使用仓库中的 [`docker-compose.example.yaml`](./docker-compose.example.yaml)：
+
+```sh
+mkdir -p ./s2a-maid-data
+cp config.example.toml ./s2a-maid-data/config.toml
+chmod 600 ./s2a-maid-data/config.toml
+# 编辑 ./s2a-maid-data/config.toml 后启动
+docker compose -f docker-compose.example.yaml up -d
+```
+
+查看日志和停止服务：
+
+```sh
+docker compose -f docker-compose.example.yaml logs -f
+docker compose -f docker-compose.example.yaml down
+```
+
 ## 配置
 
 完整示例见 [`config.example.toml`](./config.example.toml)。机器人默认读取当前目录的 `config.toml`，不读取 `.env`。
