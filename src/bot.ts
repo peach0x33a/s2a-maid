@@ -56,7 +56,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     );
   });
 
-  bot.command(["list", "accounts"], async (ctx) => {
+  bot.command("list", async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
     const groupId = dependencies.monitor.getGroupId();
     if (!groupId) {
