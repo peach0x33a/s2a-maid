@@ -115,8 +115,12 @@ export class UsageMonitor {
       const name = account.name ?? accountId;
       await this.telegram.sendMessage(
         this.alertChatId,
-        `低余额告警\\n账户: ${name} (${accountId})\\n窗口: ${window.label}\\n剩余: ${window.remainingPercent.toFixed(1)}%`,
+        formatLowQuotaAlert(name, accountId, window.label, window.remainingPercent),
       );
     }
   }
+}
+
+export function formatLowQuotaAlert(name: string, accountId: string, windowLabel: string, remainingPercent: number): string {
+  return `低余额告警\n账户：${name} (${accountId})\n窗口：${windowLabel}\n剩余：${remainingPercent.toFixed(1)}%`;
 }
