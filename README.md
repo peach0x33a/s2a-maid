@@ -14,7 +14,7 @@
 
 - [Bun](https://bun.sh/)
 - 可访问的 Sub2API 实例
-- Sub2API 管理员 API Key 或管理员 JWT
+- Sub2API 管理员 API Key
 - Telegram Bot
 
 ## 安装
@@ -104,7 +104,7 @@ alert_chat_id = -1001234567890
 [sub2api]
 base_url = "http://127.0.0.1:8080"
 admin_api_key = ""
-jwt = ""
+# 仅支持管理员 API Key
 
 [monitor]
 # 可留空，启动后在 Telegram 群中使用 /group 选择
@@ -118,19 +118,11 @@ path = "./s2a-maid.sqlite"
 
 ### Sub2API 认证
 
-优先使用管理员 API Key：
+只使用管理员 API Key：
 
 ```http
 x-api-key: <admin-api-key>
 ```
-
-如果没有 API Key，则使用管理员 JWT：
-
-```http
-Authorization: Bearer <jwt>
-```
-
-同时填写时优先使用 `admin_api_key`。
 
 ### Telegram Bot API 代理
 
@@ -150,9 +142,9 @@ Authorization: Bearer <jwt>
 |---|---|
 | `/template` | 上传现有 S2A 账户文件，使用第一条账户生成模板 |
 | `/acc` | 上传账户或登录文件，转换并创建 Sub2API 账户 |
-| `/accounts` | 查看当前监控分组中的账户及可用状态 |
-| `/usage` | 查看逐账户用量、可用账户总额度和分组限额 |
-| `/monitor` | 查看监控分组、间隔、阈值和上次检查状态 |
+| `/list` | 查看当前分组全部账户；支持 `available`、`unavailable` 参数 |
+| `/usage` | 查看可用账户的逐账户用量、总额度和分组限额 |
+| `/monitor` | 查看监控状态及不可用账户的 401、429、暂停等原因 |
 | `/group`、`/groups` | 使用内联按钮选择监控分组 |
 | `/cancel` | 取消当前等待的模板或账户上传 |
 | `/help`、`/start` | 查看命令说明 |
@@ -216,7 +208,17 @@ Codex auth.json → S2A 账户格式
 GET /api/v1/admin/accounts/{id}/usage
 ```
 
-当前支持常见的 5 小时、7 天、每日和每周窗口。显示时使用中文名称。
+当前支持常见的 5 小时、7 天、每日和每周窗口。显示时使用中文名称。结果较长时会自动拆分成多条 Telegram 消息。
+
+`/usage` 默认只显示可用账户，并在结尾说明排除了多少个不可用账户。使用 `/monitor` 可查看不可用账户及具体原因。账户列表支持：
+
+```text
+/list                 查看全部账户
+/list available       只查看可用账户
+/list unavailable     只查看不可用账户
+```
+
+参数也支持中文：`全部`、`可用`、`不可用`。
 
 ### 可用账户规则
 

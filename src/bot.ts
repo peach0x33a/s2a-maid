@@ -1,10 +1,18 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import { AccountInputError, extractAccountTemplate, mergeAndValidateAccount, parseAccountPayloadDetailed } from "./accounts";
 import type { Store } from "./database";
-import { isUsableAccount, type ManagedGroup, type Sub2ApiClient } from "./sub2api";
+import {
+  filterAccounts,
+  isUsableAccount,
+  parseAccountListFilter,
+  unavailableAccountReason,
+  type ManagedGroup,
+  type Sub2ApiClient,
+} from "./sub2api";
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows } from "./usage";
+import { splitTelegramText } from "./messages";
 
 export interface BotDependencies {
   store: Store;
@@ -27,7 +35,13 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     const groups = await dependencies.sub2api.listGroups();
     const group = groups.find((item) => String(item.id) === status.groupId);
     const checked = status.lastCheckedAt ? new Date(status.lastCheckedAt).toLocaleString("zh-CN") : "尚未检查";
-    await ctx.reply(
+    const unavailableDetails = status.unavailableAccounts.length > 0
+      ? `\n\n不可用账户（${status.unavailableAccounts.length} 个）：\n${status.unavailableAccounts.map((account) =>
+        `- ${account.name ?? "未命名"} (ID: ${account.id})：${account.reason}`
+      ).join("\n")}`
+      : "";
+    await replyLong(
+      ctx,
       `监控正常。\n\n` +
       `分组：${group?.name ?? status.groupId} (ID: ${status.groupId})\n` +
       `现在：${status.running ? "正在检查" : "等下一轮"}\n` +
@@ -36,12 +50,13 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       `上次检查：${checked}\n` +
       `账户：${status.totalAccounts} 个，其中 ${status.usableAccounts} 个可用\n` +
       `${formatGroupLimits(group)}\n` +
-      `${status.lastError ? `最近一次报错：${status.lastError}\n` : ""}\n` +
+      `${status.lastError ? `最近一次报错：${status.lastError}\n` : ""}` +
+      `${unavailableDetails}\n\n` +
       "只检查状态正常、可以调度的账户。报错或暂停的账户会跳过。",
     );
   });
 
-  bot.command("accounts", async (ctx) => {
+  bot.command(["list", "accounts"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
     const groupId = dependencies.monitor.getGroupId();
     if (!groupId) {
@@ -49,18 +64,30 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       return;
     }
     try {
-      const accounts = await dependencies.sub2api.listAccounts(groupId);
-      if (accounts.length === 0) {
-        await ctx.reply(`分组 ${groupId} 中暂无账户。`);
+      const filter = parseAccountListFilter(ctx.match ?? "");
+      if (!filter) {
+        await ctx.reply("参数无效。可用参数：all、available、unavailable（或：全部、可用、不可用）。");
         return;
       }
-      const lines = accounts.map((account, index) => {
-        const status = account.status ?? "未知状态";
-        const quota = isUsableAccount(account) ? "计入总额度" : "不计入总额度";
-        return `${index + 1}. ${account.name ?? "未命名"} (ID: ${account.id}) · ${status} · ${quota}`;
+      const accounts = await dependencies.sub2api.listAccounts(groupId);
+      const selected = filterAccounts(accounts, filter);
+      if (selected.length === 0) {
+        const label = filter === "available" ? "可用" : filter === "unavailable" ? "不可用" : "";
+        await ctx.reply(`分组 ${groupId} 中暂无${label}账户。`);
+        return;
+      }
+      const lines = selected.map((account, index) => {
+        if (isUsableAccount(account)) {
+          return `${index + 1}. ${account.name ?? "未命名"} (ID: ${account.id}) · 可用`;
+        }
+        return `${index + 1}. ${account.name ?? "未命名"} (ID: ${account.id}) · ${unavailableAccountReason(account) ?? "不可用"}`;
       });
       const usableCount = accounts.filter(isUsableAccount).length;
-      await ctx.reply(`分组 ${groupId} 共 ${accounts.length} 个账户，其中 ${usableCount} 个可用：\n\n${lines.join("\n")}\n\n总额度仅统计状态正常且可调度的账户。`);
+      const filterLabel = filter === "available" ? "可用账户" : filter === "unavailable" ? "不可用账户" : "全部账户";
+      await replyLong(
+        ctx,
+        `分组 ${groupId} ${filterLabel}（显示 ${selected.length} 个；全部 ${accounts.length} 个，可用 ${usableCount} 个）：\n\n${lines.join("\n")}`,
+      );
     } catch (error) {
       console.error("Account listing failed:", error);
       await ctx.reply("暂时无法获取账户列表，请稍后重试。");
@@ -80,24 +107,27 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
         await ctx.reply(`分组 ${groupId} 中暂无账户。`);
         return;
       }
+      const usableAccounts = accounts.filter(isUsableAccount);
+      const excludedCount = accounts.length - usableAccounts.length;
+      if (usableAccounts.length === 0) {
+        await ctx.reply(`分组 ${groupId} 中没有可用账户。${excludedCount > 0 ? ` 已排除 ${excludedCount} 个不可用账户，可使用 /monitor 查看原因。` : ""}`);
+        return;
+      }
       const results: string[] = [];
       const totals = new Map<string, { label: string; remaining: number; accounts: number }>();
-      for (const account of accounts) {
-        const usable = isUsableAccount(account);
+      for (const account of usableAccounts) {
         try {
           const windows = extractUsageWindows(await dependencies.sub2api.getUsage(account.id));
           const lines = windows.length > 0
             ? windows.map((window) => `${window.label}: 剩余 ${window.remainingPercent.toFixed(1)}%`)
             : ["暂无可识别用量窗口"];
-          if (usable) {
-            for (const window of windows) {
-              const total = totals.get(window.key) ?? { label: window.label, remaining: 0, accounts: 0 };
-              total.remaining += window.remainingPercent;
-              total.accounts += 1;
-              totals.set(window.key, total);
-            }
+          for (const window of windows) {
+            const total = totals.get(window.key) ?? { label: window.label, remaining: 0, accounts: 0 };
+            total.remaining += window.remainingPercent;
+            total.accounts += 1;
+            totals.set(window.key, total);
           }
-          results.push(`• ${account.name ?? "未命名"} (ID: ${account.id})${usable ? "" : "【不可用，不计入总额度】"}\n  ${lines.join("\n  ")}`);
+          results.push(`• ${account.name ?? "未命名"} (ID: ${account.id})\n  ${lines.join("\n  ")}`);
         } catch (error) {
           console.error(`Usage query failed for account ${account.id}:`, error);
           results.push(`• ${account.name ?? "未命名"} (ID: ${account.id})【查询失败，不计入总额度】`);
@@ -108,11 +138,13 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       );
       const group = (await dependencies.sub2api.listGroups()).find((item) => String(item.id) === groupId);
       const limits = group ? formatGroupLimits(group) : "分组配置额度：未知";
-      await ctx.reply(
+      await replyLong(
+        ctx,
         `分组 ${group?.name ?? groupId} 用量：\n\n` +
         `${results.join("\n\n")}\n\n` +
         `分组总额度：\n${totalLines.length > 0 ? totalLines.join("\n") : "没有可计入的用量数据"}\n${limits}\n\n` +
-        "总额度只算状态正常、可以调度的账户。报错、暂停或查询失败的账户不算在内。每个满额账户是 100%，两个满额账户就是 200%。",
+        `${excludedCount > 0 ? `已排除 ${excludedCount} 个不可用账户，使用 /monitor 查看原因。\n` : ""}` +
+        "总额度只统计状态正常且可调度的账户。每个满额账户按 100% 计算。",
       );
     } catch (error) {
       console.error("Usage listing failed:", error);
@@ -170,7 +202,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 设置账户模板\n/acc 导入账户\n/accounts 查看账户\n/usage 查看用量\n/monitor 查看监控状态\n/group 选择监控分组\n/cancel 取消当前操作");
+    await ctx.reply("可用命令：\n/template 设置账户模板\n/acc 导入账户\n/list [all|available|unavailable] 查看账户\n/usage 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作");
   });
 
   bot.on("message", async (ctx) => {
@@ -228,6 +260,10 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       await ctx.reply(message);
     }
   });
+}
+
+async function replyLong(ctx: Context, text: string): Promise<void> {
+  for (const chunk of splitTelegramText(text)) await ctx.reply(chunk);
 }
 
 function formatGroupLimits(group: ManagedGroup | undefined): string {

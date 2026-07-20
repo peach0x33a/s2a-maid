@@ -12,7 +12,6 @@ const validConfig = {
   sub2api: {
     base_url: "http://sub2api.example/",
     admin_api_key: "admin-key",
-    jwt: "ignored-jwt",
   },
   monitor: {
     group_id: "group-1",
@@ -31,7 +30,7 @@ describe("TOML config", () => {
       telegramApiHeaders: { "X-Proxy-Token": "secret" },
       alertChatId: -1001234567890,
       sub2ApiBaseUrl: "http://sub2api.example",
-      sub2ApiAuth: { type: "api-key", value: "admin-key" },
+      sub2ApiAdminApiKey: "admin-key",
       monitorGroupId: "group-1",
       usageCheckIntervalSeconds: 60,
       lowQuotaPercent: 15,
@@ -47,19 +46,19 @@ describe("TOML config", () => {
         allowed_chat_ids: [-1001234567890],
         alert_chat_id: -1001234567890,
       },
-      sub2api: { jwt: "jwt-token" },
+      sub2api: { admin_api_key: "admin-key" },
       monitor: { group_id: "group-1" },
     });
     expect(config.telegramApiBaseUrl).toBe("https://api.telegram.org");
     expect(config.sub2ApiBaseUrl).toBe("http://127.0.0.1:8080");
-    expect(config.sub2ApiAuth).toEqual({ type: "bearer", value: "jwt-token" });
+    expect(config.sub2ApiAdminApiKey).toBe("admin-key");
     expect(config.usageCheckIntervalSeconds).toBe(300);
     expect(config.lowQuotaPercent).toBe(10);
     expect(config.databasePath).toBe("./s2a-maid.sqlite");
   });
 
   test("rejects missing credentials and invalid chat IDs", () => {
-    expect(() => parseConfig({ ...validConfig, sub2api: {} })).toThrow("sub2api.admin_api_key or sub2api.jwt is required");
+    expect(() => parseConfig({ ...validConfig, sub2api: {} })).toThrow("sub2api.admin_api_key is required");
     expect(() => parseConfig({
       ...validConfig,
       telegram: { ...validConfig.telegram, allowed_chat_ids: ["-1001234567890"] },

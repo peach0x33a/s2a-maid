@@ -19,17 +19,17 @@ export interface ManagedAccount {
   type?: string;
   status?: string;
   schedulable?: boolean;
+  error_message?: string | null;
+  temp_unschedulable_reason?: string | null;
+  rate_limited_at?: string | null;
+  rate_limit_reset_at?: string | null;
   group_id?: string | number;
   group_ids?: Array<string | number>;
   group?: { id?: string | number };
 }
 
-export type Sub2ApiAuth =
-  | { type: "api-key"; value: string }
-  | { type: "bearer"; value: string };
-
 export class Sub2ApiClient {
-  constructor(private readonly baseUrl: string, private readonly auth: Sub2ApiAuth) {}
+  constructor(private readonly baseUrl: string, private readonly adminApiKey: string) {}
 
   async createAccount(account: Account, idempotencyKey: string): Promise<void> {
     await this.request("/api/v1/admin/accounts", {
@@ -63,9 +63,7 @@ export class Sub2ApiClient {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: init.method ?? "GET",
       headers: {
-        ...(this.auth.type === "api-key"
-          ? { "x-api-key": this.auth.value }
-          : { authorization: `Bearer ${this.auth.value}` }),
+        "x-api-key": this.adminApiKey,
         accept: "application/json",
         ...(init.body === undefined ? {} : { "content-type": "application/json" }),
         ...init.headers,
@@ -118,6 +116,46 @@ function isManagedAccount(value: unknown): value is ManagedAccount {
 
 export function isUsableAccount(account: ManagedAccount): boolean {
   return account.status === "active" && account.schedulable !== false;
+}
+
+export type AccountListFilter = "all" | "available" | "unavailable";
+
+export function parseAccountListFilter(value: string): AccountListFilter | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === "all" || normalized === "全部") return "all";
+  if (["available", "usable", "可用"].includes(normalized)) return "available";
+  if (["unavailable", "unusable", "不可用"].includes(normalized)) return "unavailable";
+  return null;
+}
+
+export function filterAccounts(accounts: ManagedAccount[], filter: AccountListFilter): ManagedAccount[] {
+  if (filter === "available") return accounts.filter(isUsableAccount);
+  if (filter === "unavailable") return accounts.filter((account) => !isUsableAccount(account));
+  return accounts;
+}
+
+export function unavailableAccountReason(account: ManagedAccount): string | null {
+  if (isUsableAccount(account)) return null;
+
+  const detail = [account.error_message, account.temp_unschedulable_reason]
+    .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+    .join(" ");
+  const normalized = detail.toLowerCase();
+
+  if (/\b401\b|unauthorized|invalid[_ ]?token|authentication/.test(normalized)) return "401 认证失败";
+  if (/\b403\b|forbidden|permission denied/.test(normalized)) return "403 权限不足";
+  if (/\b429\b|too many requests|rate[_ -]?limit/.test(normalized) || account.rate_limited_at) return "429 请求受限";
+  if (/\b5\d\d\b|upstream|server error|bad gateway|service unavailable/.test(normalized)) return "上游服务异常";
+  if (account.status === "paused") return "账户已暂停";
+  if (account.status === "error") return detail ? `账户错误：${shortReason(detail)}` : "账户错误";
+  if (account.schedulable === false) return detail ? `不可调度：${shortReason(detail)}` : "不可调度";
+  if (account.status) return `状态：${account.status}`;
+  return "状态未知";
+}
+
+function shortReason(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > 80 ? `${compact.slice(0, 77)}…` : compact;
 }
 
 function belongsToGroup(account: ManagedAccount, groupId: string): boolean {

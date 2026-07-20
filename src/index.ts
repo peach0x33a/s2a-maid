@@ -15,7 +15,7 @@ const bot = new Bot(config.telegramBotToken, {
     fetch: createTelegramFetch(config.telegramApiHeaders),
   },
 });
-const sub2api = new Sub2ApiClient(config.sub2ApiBaseUrl, config.sub2ApiAuth);
+const sub2api = new Sub2ApiClient(config.sub2ApiBaseUrl, config.sub2ApiAdminApiKey);
 const monitor = new UsageMonitor(
   sub2api,
   { sendMessage: (chatId, text) => bot.api.sendMessage(chatId, text) },

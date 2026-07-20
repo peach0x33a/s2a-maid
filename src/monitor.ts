@@ -1,5 +1,5 @@
 import type { Store } from "./database";
-import { isUsableAccount, type Sub2ApiClient } from "./sub2api";
+import { isUsableAccount, unavailableAccountReason, type Sub2ApiClient } from "./sub2api";
 import { extractUsageWindows } from "./usage";
 
 export interface AlertNotifier {
@@ -15,6 +15,7 @@ export interface MonitorStatus {
   lastError: string | null;
   totalAccounts: number;
   usableAccounts: number;
+  unavailableAccounts: Array<{ id: string | number; name?: string; reason: string }>;
 }
 
 export class UsageMonitor {
@@ -24,6 +25,7 @@ export class UsageMonitor {
   private lastError: string | null = null;
   private totalAccounts = 0;
   private usableAccounts = 0;
+  private unavailableAccounts: Array<{ id: string | number; name?: string; reason: string }> = [];
 
   constructor(
     private readonly sub2api: Sub2ApiClient,
@@ -63,6 +65,7 @@ export class UsageMonitor {
       lastError: this.lastError,
       totalAccounts: this.totalAccounts,
       usableAccounts: this.usableAccounts,
+      unavailableAccounts: this.unavailableAccounts,
     };
   }
 
@@ -74,6 +77,13 @@ export class UsageMonitor {
       const usable = accounts.filter(isUsableAccount);
       this.totalAccounts = accounts.length;
       this.usableAccounts = usable.length;
+      this.unavailableAccounts = accounts
+        .filter((account) => !isUsableAccount(account))
+        .map((account) => ({
+          id: account.id,
+          name: account.name,
+          reason: unavailableAccountReason(account) ?? "状态未知",
+        }));
       this.lastError = null;
       for (const account of usable) {
         try {

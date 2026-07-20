@@ -8,7 +8,7 @@ export interface Config {
   allowedChatIds: Set<number>;
   alertChatId: number;
   sub2ApiBaseUrl: string;
-  sub2ApiAuth: { type: "api-key" | "bearer"; value: string };
+  sub2ApiAdminApiKey: string;
   monitorGroupId: string | null;
   usageCheckIntervalSeconds: number;
   lowQuotaPercent: number;
@@ -63,9 +63,7 @@ export function parseConfig(value: unknown): Config {
     throw new Error("telegram.allowed_chat_ids must contain at least one group ID");
   }
 
-  const apiKey = optionalString("sub2api.admin_api_key", sub2api.admin_api_key);
-  const jwt = optionalString("sub2api.jwt", sub2api.jwt);
-  if (!apiKey && !jwt) throw new Error("sub2api.admin_api_key or sub2api.jwt is required");
+  const apiKey = requireString("sub2api.admin_api_key", sub2api.admin_api_key);
 
   const threshold = optionalPositiveNumber("monitor.low_quota_percent", monitor.low_quota_percent, 10);
   if (threshold > 100) throw new Error("monitor.low_quota_percent must not exceed 100");
@@ -77,9 +75,7 @@ export function parseConfig(value: unknown): Config {
     allowedChatIds: new Set(allowedChatIds),
     alertChatId: requireChatId("telegram.alert_chat_id", telegram.alert_chat_id),
     sub2ApiBaseUrl: optionalString("sub2api.base_url", sub2api.base_url, "http://127.0.0.1:8080").replace(/\/$/, ""),
-    sub2ApiAuth: apiKey
-      ? { type: "api-key", value: apiKey }
-      : { type: "bearer", value: jwt },
+    sub2ApiAdminApiKey: apiKey,
     monitorGroupId: optionalString("monitor.group_id", monitor.group_id) || null,
     usageCheckIntervalSeconds: optionalPositiveNumber("monitor.interval_seconds", monitor.interval_seconds, 300),
     lowQuotaPercent: threshold,
