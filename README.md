@@ -45,6 +45,31 @@ bun test
 bun run check
 ```
 
+## Docker
+
+构建镜像时会先执行完整测试和 TypeScript 类型检查；任一步失败，镜像构建都会失败：
+
+```sh
+docker build -t s2a-maid:latest .
+```
+
+容器运行时需要把包含真实配置的目录挂载到 `/data`：
+
+```sh
+mkdir -p ./s2a-maid-data
+cp config.example.toml ./s2a-maid-data/config.toml
+# 编辑 ./s2a-maid-data/config.toml，填写 Telegram 和 Sub2API 配置
+chmod 600 ./s2a-maid-data/config.toml
+
+docker run -d \\
+  --name s2a-maid \\
+  --restart unless-stopped \\
+  -v "$(pwd)/s2a-maid-data:/data" \\
+  s2a-maid:latest
+```
+
+数据库默认保存在 `/data/s2a-maid.sqlite`。不要把真实 `config.toml`、数据库或账户导出文件复制进镜像；它们应通过挂载或密钥管理提供。
+
 ## 配置
 
 完整示例见 [`config.example.toml`](./config.example.toml)。机器人默认读取当前目录的 `config.toml`，不读取 `.env`。
