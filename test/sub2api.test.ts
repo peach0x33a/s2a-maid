@@ -3,6 +3,7 @@ import {
   filterAccounts,
   isUsableAccount,
   parseAccountListFilter,
+  Sub2ApiClient,
   unavailableAccountReason,
 } from "../src/sub2api";
 
@@ -21,6 +22,36 @@ test("classifies unavailable account reasons", () => {
   expect(unavailableAccountReason({ id: 3, status: "active", schedulable: false, temp_unschedulable_reason: "rate_limit" })).toBe("429 请求受限");
   expect(unavailableAccountReason({ id: 4, status: "paused" })).toBe("账户已暂停");
   expect(unavailableAccountReason({ id: 5, status: "error", error_message: "refresh failed" })).toBe("账户错误：refresh failed");
+});
+
+test("loads every account page instead of stopping at the default first 20", async () => {
+  const requestedPages: number[] = [];
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      const page = Number(url.searchParams.get("page"));
+      requestedPages.push(page);
+      const start = page === 1 ? 1 : 21;
+      const count = page === 1 ? 20 : 9;
+      const items = Array.from({ length: count }, (_, index) => ({
+        id: start + index,
+        name: `account-${start + index}`,
+        status: "active",
+        group_ids: [3],
+      }));
+      return Response.json({ data: { items, total: 29, page, page_size: 20, pages: 2 } });
+    },
+  });
+  try {
+    const client = new Sub2ApiClient(`http://127.0.0.1:${server.port}`, "test-key");
+    const accounts = await client.listAccounts("3");
+    expect(accounts).toHaveLength(29);
+    expect(accounts.at(-1)?.id).toBe(29);
+    expect(requestedPages).toEqual([1, 2]);
+  } finally {
+    server.stop(true);
+  }
 });
 
 test("parses and applies account list filters", () => {

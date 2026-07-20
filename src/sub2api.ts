@@ -50,9 +50,30 @@ export class Sub2ApiClient {
   }
 
   async listAccounts(groupId: string): Promise<ManagedAccount[]> {
-    const payload = await this.request<unknown>(`/api/v1/admin/accounts?group_id=${encodeURIComponent(groupId)}`);
-    const records = unwrapArray(payload);
-    return records.filter(isManagedAccount).filter((account) => belongsToGroup(account, groupId));
+    const pageSize = 200;
+    const accounts: ManagedAccount[] = [];
+    for (let page = 1; ; page += 1) {
+      const query = new URLSearchParams({
+        group_id: groupId,
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      const payload = await this.request<unknown>(`/api/v1/admin/accounts?${query}`);
+      const records = unwrapArray(payload).filter(isManagedAccount);
+      accounts.push(...records);
+
+      const pagination = paginationFrom(payload);
+      if (pagination.pages !== null) {
+        if (page >= pagination.pages) break;
+        continue;
+      }
+      if (pagination.total !== null) {
+        if (accounts.length >= pagination.total || records.length === 0) break;
+        continue;
+      }
+      if (records.length < pageSize) break;
+    }
+    return accounts.filter((account) => belongsToGroup(account, groupId));
   }
 
   async getUsage(accountId: string | number): Promise<unknown> {
@@ -91,6 +112,14 @@ function unwrapData(value: unknown): unknown {
   return value && typeof value === "object" && !Array.isArray(value) && "data" in value
     ? value.data
     : value;
+}
+
+function paginationFrom(value: unknown): { total: number | null; pages: number | null } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { total: null, pages: null };
+  const record = value as Record<string, unknown>;
+  const total = typeof record.total === "number" && Number.isFinite(record.total) ? record.total : null;
+  const pages = typeof record.pages === "number" && Number.isFinite(record.pages) ? record.pages : null;
+  return { total, pages };
 }
 
 function unwrapArray(value: unknown): unknown[] {
