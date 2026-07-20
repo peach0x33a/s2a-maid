@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { JsonObject } from "./types";
 
 export interface Config {
@@ -46,10 +47,10 @@ export function loadConfig(path: string = configPathFromArgs()): Config {
   } catch (error) {
     throw new Error(`Invalid TOML config at ${path}`, { cause: error });
   }
-  return parseConfig(parsed);
+  return parseConfig(parsed, dirname(resolve(path)));
 }
 
-export function parseConfig(value: unknown): Config {
+export function parseConfig(value: unknown, configDirectory?: string): Config {
   const root = requireRecord("config", value);
   const telegram = requireRecord("telegram", root.telegram);
   const sub2api = requireRecord("sub2api", root.sub2api);
@@ -79,8 +80,16 @@ export function parseConfig(value: unknown): Config {
     monitorGroupId: optionalString("monitor.group_id", monitor.group_id) || null,
     usageCheckIntervalSeconds: optionalPositiveNumber("monitor.interval_seconds", monitor.interval_seconds, 300),
     lowQuotaPercent: threshold,
-    databasePath: optionalString("database.path", database.path, "./s2a-maid.sqlite"),
+    databasePath: resolveDatabasePath(
+      optionalString("database.path", database.path, "./s2a-maid.sqlite"),
+      configDirectory,
+    ),
   };
+}
+
+function resolveDatabasePath(path: string, configDirectory: string | undefined): string {
+  if (!configDirectory || isAbsolute(path)) return path;
+  return resolve(configDirectory, path);
 }
 
 function requireRecord(name: string, value: unknown): UnknownRecord {

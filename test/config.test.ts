@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { configPathFromArgs, parseConfig } from "../src/config";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configPathFromArgs, loadConfig, parseConfig } from "../src/config";
 
 const validConfig = {
   telegram: {
@@ -55,6 +58,28 @@ describe("TOML config", () => {
     expect(config.usageCheckIntervalSeconds).toBe(300);
     expect(config.lowQuotaPercent).toBe(10);
     expect(config.databasePath).toBe("./s2a-maid.sqlite");
+  });
+
+  test("resolves a relative database path beside the config file", () => {
+    const directory = mkdtempSync(join(tmpdir(), "s2a-maid-config-"));
+    const configPath = join(directory, "config.toml");
+    writeFileSync(configPath, `
+[telegram]
+bot_token = "telegram-token"
+allowed_chat_ids = [-1001234567890]
+alert_chat_id = -1001234567890
+[sub2api]
+admin_api_key = "admin-key"
+[monitor]
+group_id = ""
+[database]
+path = "./state.sqlite"
+`);
+    try {
+      expect(loadConfig(configPath).databasePath).toBe(join(directory, "state.sqlite"));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("rejects missing credentials and invalid chat IDs", () => {

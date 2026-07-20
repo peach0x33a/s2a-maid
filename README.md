@@ -68,7 +68,7 @@ docker run -d \\
   s2a-maid:latest
 ```
 
-数据库默认保存在 `/data/s2a-maid.sqlite`。不要把真实 `config.toml`、数据库或账户导出文件复制进镜像；它们应通过挂载或密钥管理提供。
+数据库默认保存在 `/data/s2a-maid.sqlite`。相对的 `database.path` 会以配置文件所在目录为基准解析，因此 `/data/config.toml` 中的 `./s2a-maid.sqlite` 会持久化到 `/data/s2a-maid.sqlite`。不要把真实 `config.toml`、数据库或账户导出文件复制进镜像；它们应通过挂载或密钥管理提供。
 
 也可以使用仓库中的 [`docker-compose.example.yaml`](./docker-compose.example.yaml)：
 
@@ -242,7 +242,7 @@ SQLite 保存：
 - 当前监控分组；
 - 已发送的低额度告警记录。
 
-默认数据库为 `s2a-maid.sqlite`，启用 WAL。数据库和本地配置均已加入 `.gitignore`。
+默认数据库名为 `s2a-maid.sqlite`，启用 WAL。相对路径以 `config.toml` 所在目录为基准，确保 Docker 挂载 `/data` 后，模板、监控分组和告警状态可在容器重建后保留。数据库和本地配置均已加入 `.gitignore`。
 
 ## 安全注意事项
 
