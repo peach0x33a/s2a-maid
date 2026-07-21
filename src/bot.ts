@@ -8,13 +8,14 @@ import {
   formatManagedAccountName,
   isUsableAccount,
   parseAccountListCommand,
+  sortAccounts,
   unavailableAccountReason,
   type ManagedGroup,
   type Sub2ApiClient,
 } from "./sub2api";
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
-import { extractUsageWindows } from "./usage";
+import { extractUsageWindows, usageWindowsForDisplay } from "./usage";
 import { formatAccountTemplate, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "./messages";
 import type { JsonObject } from "./types";
 
@@ -64,7 +65,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
     const command = parseAccountListCommand(ctx.match ?? "");
     if (!command) {
-      await ctx.reply("参数无效。用法：/list [分组ID] [--all|--available|--unavailable]");
+      await ctx.reply("参数无效。用法：/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id]");
       return;
     }
     const groupId = command.groupId ?? dependencies.monitor.getGroupId();
@@ -75,7 +76,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     const filter = command.filter;
     try {
       const accounts = await dependencies.sub2api.listAccounts(groupId);
-      const selected = filterAccounts(accounts, filter);
+      const selected = sortAccounts(filterAccounts(accounts, filter), command.sort);
       if (selected.length === 0) {
         const label = filter === "available" ? "可用" : filter === "unavailable" ? "不可用" : "";
         await ctx.reply(`分组 ${groupId} 中暂无${label}账户。`);
@@ -130,8 +131,9 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       for (const account of usableAccounts) {
         try {
           const windows = extractUsageWindows(await dependencies.sub2api.getUsage(account.id));
-          const lines = windows.length > 0
-            ? windows.map((window) => `${window.label}: 剩余 ${window.remainingPercent.toFixed(1)}%`)
+          const displayWindows = usageWindowsForDisplay(windows, account.last_used_at);
+          const lines = displayWindows.length > 0
+            ? displayWindows.map((window) => `${window.label}: 剩余 ${window.remainingPercent.toFixed(1)}%`)
             : ["暂无可识别用量窗口"];
           for (const window of windows) {
             const total = totals.get(window.key) ?? { label: window.label, remaining: 0, accounts: 0 };
@@ -228,7 +230,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入账户\n/list [分组ID] [--all|--available|--unavailable] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
+    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入账户\n/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
   });
 
   bot.on("message", async (ctx) => {

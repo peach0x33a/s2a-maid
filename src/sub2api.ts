@@ -23,6 +23,7 @@ export interface ManagedAccount {
   temp_unschedulable_reason?: string | null;
   rate_limited_at?: string | null;
   rate_limit_reset_at?: string | null;
+  last_used_at?: string | null;
   group_id?: string | number;
   group_ids?: Array<string | number>;
   group?: { id?: string | number };
@@ -164,17 +165,23 @@ export function formatManagedAccountName(account: ManagedAccount): string {
 }
 
 export type AccountListFilter = "all" | "available" | "unavailable";
+export type AccountListSort = "status" | "name" | "id";
 
 export interface AccountListCommand {
   groupId: string | null;
   filter: AccountListFilter;
+  sort: AccountListSort;
 }
 
 export function parseAccountListCommand(value: string): AccountListCommand | null {
+  const tokens = value.trim().split(/\s+/).filter(Boolean);
   let groupId: string | null = null;
   let filter: AccountListFilter = "all";
+  let sort: AccountListSort = "status";
   let hasFilter = false;
-  for (const token of value.trim().split(/\s+/).filter(Boolean)) {
+  let hasSort = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
     const normalized = token.toLowerCase();
     if (["--all", "--available", "--unavailable"].includes(normalized)) {
       if (hasFilter) return null;
@@ -182,16 +189,42 @@ export function parseAccountListCommand(value: string): AccountListCommand | nul
       hasFilter = true;
       continue;
     }
+    if (normalized === "--sort" || normalized.startsWith("--sort=")) {
+      if (hasSort) return null;
+      const value = normalized === "--sort" ? tokens[++index]?.toLowerCase() : normalized.slice("--sort=".length);
+      if (value !== "status" && value !== "name" && value !== "id") return null;
+      sort = value;
+      hasSort = true;
+      continue;
+    }
     if (!/^\d+$/.test(token) || groupId !== null) return null;
     groupId = token;
   }
-  return { groupId, filter };
+  return { groupId, filter, sort };
 }
 
 export function filterAccounts(accounts: ManagedAccount[], filter: AccountListFilter): ManagedAccount[] {
   if (filter === "available") return accounts.filter(isUsableAccount);
   if (filter === "unavailable") return accounts.filter((account) => !isUsableAccount(account));
   return accounts;
+}
+
+export function sortAccounts(accounts: ManagedAccount[], sort: AccountListSort): ManagedAccount[] {
+  return [...accounts].sort((left, right) => {
+    if (sort === "id") return compareAccountIds(left.id, right.id);
+    const nameOrder = (left.name ?? "").localeCompare(right.name ?? "", undefined, { sensitivity: "base" });
+    if (sort === "name") return nameOrder || compareAccountIds(left.id, right.id);
+    return statusCategoryOrder(accountStatusCategory(left)) - statusCategoryOrder(accountStatusCategory(right))
+      || nameOrder
+      || compareAccountIds(left.id, right.id);
+  });
+}
+
+function compareAccountIds(left: string | number, right: string | number): number {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  return String(left).localeCompare(String(right), undefined, { numeric: true });
 }
 
 export function accountStatusSummary(accounts: ManagedAccount[]): string {

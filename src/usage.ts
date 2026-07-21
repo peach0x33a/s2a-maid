@@ -56,6 +56,20 @@ function friendlyUsageLabel(label: string, path: string): string {
   return label.startsWith("usage.") ? label.slice("usage.".length) : label;
 }
 
+export function usageWindowsForDisplay(
+  windows: UsageWindow[],
+  lastUsedAt: string | null | undefined,
+  now = new Date(),
+): UsageWindow[] {
+  const fiveHour = windows.find((window) => window.label === "5 小时窗口");
+  const sevenDay = windows.find((window) => window.label === "7 天窗口");
+  if (!fiveHour || !sevenDay || fiveHour.utilization !== 0 || sevenDay.utilization <= 0 || !lastUsedAt) return windows;
+  const lastUsedTime = Date.parse(lastUsedAt);
+  const age = now.getTime() - lastUsedTime;
+  if (!Number.isFinite(lastUsedTime) || age < 0 || age >= 5 * 60 * 60 * 1000) return windows;
+  return windows.filter((window) => window !== fiveHour);
+}
+
 export function lowQuotaWindows(payload: unknown, threshold: number): UsageWindow[] {
   return extractUsageWindows(payload).filter((window) => window.remainingPercent < threshold);
 }

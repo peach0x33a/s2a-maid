@@ -3,6 +3,7 @@ import {
   accountPlanLabel,
   accountStatusSummary,
   filterAccounts,
+  sortAccounts,
   formatManagedAccountName,
   isUsableAccount,
   parseAccountListCommand,
@@ -84,14 +85,30 @@ test("loads every account page instead of stopping at the default first 20", asy
 });
 
 test("parses list group IDs and -- filters", () => {
-  expect(parseAccountListCommand("")).toEqual({ groupId: null, filter: "all" });
-  expect(parseAccountListCommand("7")).toEqual({ groupId: "7", filter: "all" });
-  expect(parseAccountListCommand("7 --available")).toEqual({ groupId: "7", filter: "available" });
-  expect(parseAccountListCommand("--unavailable 7")).toEqual({ groupId: "7", filter: "unavailable" });
+  expect(parseAccountListCommand("")).toEqual({ groupId: null, filter: "all", sort: "status" });
+  expect(parseAccountListCommand("7")).toEqual({ groupId: "7", filter: "all", sort: "status" });
+  expect(parseAccountListCommand("7 --available")).toEqual({ groupId: "7", filter: "available", sort: "status" });
+  expect(parseAccountListCommand("--unavailable 7 --sort name")).toEqual({ groupId: "7", filter: "unavailable", sort: "name" });
+  expect(parseAccountListCommand("--sort=id 7")).toEqual({ groupId: "7", filter: "all", sort: "id" });
   expect(parseAccountListCommand("all")).toBeNull();
   expect(parseAccountListCommand("--unknown")).toBeNull();
+  expect(parseAccountListCommand("--sort")).toBeNull();
+  expect(parseAccountListCommand("--sort newest")).toBeNull();
   expect(parseAccountListCommand("7 8")).toBeNull();
   expect(parseAccountListCommand("--all --available")).toBeNull();
+});
+
+test("sorts accounts by status with usable accounts first by default", () => {
+  const accounts = [
+    { id: 4, name: "zeta", status: "error", error_message: "429 Too Many Requests" },
+    { id: 3, name: "beta", status: "active" },
+    { id: 2, name: "alpha", status: "active" },
+    { id: 1, name: "gamma", status: "error", error_message: "HTTP 401 Unauthorized" },
+  ];
+  expect(sortAccounts(accounts, "status").map((account) => account.id)).toEqual([2, 3, 1, 4]);
+  expect(sortAccounts(accounts, "name").map((account) => account.id)).toEqual([2, 3, 1, 4]);
+  expect(sortAccounts(accounts, "id").map((account) => account.id)).toEqual([1, 2, 3, 4]);
+  expect(accounts.map((account) => account.id)).toEqual([4, 3, 2, 1]);
 });
 
 test("applies account list filters", () => {

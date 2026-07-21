@@ -144,7 +144,7 @@ x-api-key: <admin-api-key>
 | `/template` | 查看当前账户模板 |
 | `/template --new` | 上传现有 S2A 账户文件，使用第一条账户生成新模板并覆盖旧模板 |
 | `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建 Sub2API 账户 |
-| `/list [分组ID] [--all\|--available\|--unavailable]` | 查看账户；默认使用监听分组，也可临时指定其他分组 |
+| `/list [分组ID] [--all\|--available\|--unavailable] [--sort status\|name\|id]` | 查看账户；默认按状态排序并优先显示可用账户 |
 | `/usage [分组ID]` | 查看可用账户用量；默认使用监听分组，也可临时指定其他分组 |
 | `/monitor` | 查看监控状态及不可用账户的 401、429、暂停等原因 |
 | `/group`、`/groups` | 使用内联按钮选择监控分组 |
@@ -223,11 +223,15 @@ GET /api/v1/admin/accounts/{id}/usage
 /list --unavailable           查看监听分组的不可用账户
 /list 1                       查看分组 1 的全部账户
 /list 1 --unavailable         查看分组 1 的不可用账户
+/list --sort name             按账户名称排序
+/list 1 --sort id             按账户 ID 排序
 /usage                        查看监听分组的可用账户用量
 /usage 1                      查看分组 1 的可用账户用量
 ```
 
-选项统一使用 `--` 前缀；不再接受 `all`、`available`、`unavailable`、`new` 等无前缀写法。
+选项统一使用 `--` 前缀；不再接受 `all`、`available`、`unavailable`、`new` 等无前缀写法。`/list` 默认使用 `--sort status`，按 `200 → 401 → 402 → 403 → 429 → 5xx → 暂停 → 不可调度 → 其他错误` 排序，同一状态内按名称排序；也可以使用 `--sort name` 或 `--sort id`。
+
+`/usage` 在账户 5 小时窗口尚未使用、7 天窗口已有消耗，并且 `last_used_at` 距当前不足 5 小时时，会隐藏该账户仍为 100% 的 5 小时窗口行，只显示有意义的 7 天窗口。分组总额度仍会统计全部窗口。
 
 ### 可用账户规则
 
