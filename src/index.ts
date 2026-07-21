@@ -5,7 +5,9 @@ import { Store } from "./database";
 import { UsageMonitor } from "./monitor";
 import { Sub2ApiClient } from "./sub2api";
 import { createTelegramFetch } from "./telegram";
+import { APP_VERSION } from "./version";
 
+console.log(`s2a-maid v${APP_VERSION}`);
 const configPath = configPathFromArgs();
 const config = loadConfig(configPath);
 const store = new Store(config.databasePath);
@@ -44,7 +46,7 @@ registerBotHandlers(bot, {
 
 bot.catch((error) => console.error("grammY handler failed:", error));
 monitor.start();
-console.log(`s2a-maid started with ${configPath}; monitoring group ${store.getMonitorGroupId() ?? config.monitorGroupId ?? "(not selected)"} every ${config.usageCheckIntervalSeconds}s`);
+console.log(`s2a-maid v${APP_VERSION} started with ${configPath}; monitoring group ${store.getMonitorGroupId() ?? config.monitorGroupId ?? "(not selected)"} every ${config.usageCheckIntervalSeconds}s`);
 
 let shuttingDown = false;
 const shutdown = async (): Promise<void> => {
