@@ -7,7 +7,7 @@ import {
   filterAccounts,
   formatManagedAccountName,
   isUsableAccount,
-  parseAccountListFilter,
+  parseAccountListCommand,
   unavailableAccountReason,
   type ManagedGroup,
   type Sub2ApiClient,
@@ -15,7 +15,7 @@ import {
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows } from "./usage";
-import { formatAccountTemplate, parseTemplateCommand, splitTelegramText } from "./messages";
+import { formatAccountTemplate, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "./messages";
 import type { JsonObject } from "./types";
 
 export interface BotDependencies {
@@ -62,17 +62,18 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command("list", async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    const groupId = dependencies.monitor.getGroupId();
-    if (!groupId) {
-      await ctx.reply("请先使用 /group 选择监控分组。");
+    const command = parseAccountListCommand(ctx.match ?? "");
+    if (!command) {
+      await ctx.reply("参数无效。用法：/list [分组ID] [--all|--available|--unavailable]");
       return;
     }
+    const groupId = command.groupId ?? dependencies.monitor.getGroupId();
+    if (!groupId) {
+      await ctx.reply("请指定分组 ID，或先使用 /group 选择监控分组。");
+      return;
+    }
+    const filter = command.filter;
     try {
-      const filter = parseAccountListFilter(ctx.match ?? "");
-      if (!filter) {
-        await ctx.reply("参数无效。可用参数：all、available、unavailable（或：全部、可用、不可用）。");
-        return;
-      }
       const accounts = await dependencies.sub2api.listAccounts(groupId);
       const selected = filterAccounts(accounts, filter);
       if (selected.length === 0) {
@@ -102,9 +103,14 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command("usage", async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    const groupId = dependencies.monitor.getGroupId();
+    const requestedGroupId = parseOptionalGroupId(ctx.match ?? "");
+    if (requestedGroupId === undefined) {
+      await ctx.reply("参数无效。用法：/usage [分组ID]");
+      return;
+    }
+    const groupId = requestedGroupId ?? dependencies.monitor.getGroupId();
     if (!groupId) {
-      await ctx.reply("请先使用 /group 选择监控分组。");
+      await ctx.reply("请指定分组 ID，或先使用 /group 选择监控分组。");
       return;
     }
     try {
@@ -190,13 +196,13 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     if (!isAllowedGroup(chat, dependencies.allowedChatIds) || !ctx.from) return;
     const action = parseTemplateCommand(ctx.match ?? "");
     if (action === "invalid") {
-      await ctx.reply("参数无效。使用 /template 查看当前模板，或使用 /template new 设置新模板。");
+      await ctx.reply("参数无效。使用 /template 查看当前模板，或使用 /template --new 设置新模板。");
       return;
     }
     if (action === "show") {
       const template = dependencies.store.getTemplate();
       if (!template) {
-        await ctx.reply("尚未设置账户模板。使用 /template new 上传现有的 S2A 账户文件。");
+        await ctx.reply("尚未设置账户模板。使用 /template --new 上传现有的 S2A 账户文件。");
         return;
       }
       await replyLong(ctx, `当前账户模板：\n\n${formatAccountTemplate(template)}`);
@@ -222,7 +228,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 查看账户模板\n/template new 设置新模板\n/acc 导入账户\n/list [all|available|unavailable] 查看账户\n/usage 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作");
+    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入账户\n/list [分组ID] [--all|--available|--unavailable] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
   });
 
   bot.on("message", async (ctx) => {
@@ -280,7 +286,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
       const template = dependencies.store.getTemplate();
       if (!template) {
-        await ctx.reply("尚未设置账户模板，请先使用 /template new。");
+        await ctx.reply("尚未设置账户模板，请先使用 /template --new。");
         return;
       }
       const merged = accounts.map((account) => {

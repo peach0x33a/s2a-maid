@@ -5,7 +5,7 @@ import {
   filterAccounts,
   formatManagedAccountName,
   isUsableAccount,
-  parseAccountListFilter,
+  parseAccountListCommand,
   Sub2ApiClient,
   unavailableAccountReason,
 } from "../src/sub2api";
@@ -83,15 +83,22 @@ test("loads every account page instead of stopping at the default first 20", asy
   }
 });
 
-test("parses and applies account list filters", () => {
+test("parses list group IDs and -- filters", () => {
+  expect(parseAccountListCommand("")).toEqual({ groupId: null, filter: "all" });
+  expect(parseAccountListCommand("7")).toEqual({ groupId: "7", filter: "all" });
+  expect(parseAccountListCommand("7 --available")).toEqual({ groupId: "7", filter: "available" });
+  expect(parseAccountListCommand("--unavailable 7")).toEqual({ groupId: "7", filter: "unavailable" });
+  expect(parseAccountListCommand("all")).toBeNull();
+  expect(parseAccountListCommand("--unknown")).toBeNull();
+  expect(parseAccountListCommand("7 8")).toBeNull();
+  expect(parseAccountListCommand("--all --available")).toBeNull();
+});
+
+test("applies account list filters", () => {
   const accounts = [
     { id: 1, status: "active" },
     { id: 2, status: "error" },
   ];
-  expect(parseAccountListFilter("")).toBe("all");
-  expect(parseAccountListFilter("可用")).toBe("available");
-  expect(parseAccountListFilter("unavailable")).toBe("unavailable");
-  expect(parseAccountListFilter("unknown")).toBeNull();
   expect(filterAccounts(accounts, "all").map((account) => account.id)).toEqual([1, 2]);
   expect(filterAccounts(accounts, "available").map((account) => account.id)).toEqual([1]);
   expect(filterAccounts(accounts, "unavailable").map((account) => account.id)).toEqual([2]);

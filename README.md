@@ -142,10 +142,10 @@ x-api-key: <admin-api-key>
 | 命令 | 作用 |
 |---|---|
 | `/template` | 查看当前账户模板 |
-| `/template new` | 上传现有 S2A 账户文件，使用第一条账户生成新模板并覆盖旧模板 |
+| `/template --new` | 上传现有 S2A 账户文件，使用第一条账户生成新模板并覆盖旧模板 |
 | `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建 Sub2API 账户 |
-| `/list` | 查看当前分组全部账户；支持 `available`、`unavailable` 参数 |
-| `/usage` | 查看可用账户的逐账户用量、总额度和分组限额 |
+| `/list [分组ID] [--all\|--available\|--unavailable]` | 查看账户；默认使用监听分组，也可临时指定其他分组 |
+| `/usage [分组ID]` | 查看可用账户用量；默认使用监听分组，也可临时指定其他分组 |
 | `/monitor` | 查看监控状态及不可用账户的 401、429、暂停等原因 |
 | `/group`、`/groups` | 使用内联按钮选择监控分组 |
 | `/cancel` | 取消当前等待的模板或账户上传 |
@@ -153,7 +153,7 @@ x-api-key: <admin-api-key>
 
 ## 账户模板
 
-发送 `/template` 可查看当前保存的模板。发送 `/template new` 后上传单个 S2A 账户、账户数组或包含 `accounts` 的 Sub2API 导出文件，机器人使用第一条账户生成新模板并直接覆盖旧模板。保存成功后会输出实际写入的完整模板信息。
+发送 `/template` 可查看当前保存的模板。发送 `/template --new` 后上传单个 S2A 账户、账户数组或包含 `accounts` 的 Sub2API 导出文件，机器人使用第一条账户生成新模板并直接覆盖旧模板。保存成功后会输出实际写入的完整模板信息。
 
 模板只保存可复用配置，不保存账户身份或动态状态：
 
@@ -215,15 +215,19 @@ GET /api/v1/admin/accounts/{id}/usage
 
 当前支持常见的 5 小时、7 天、每日和每周窗口。显示时使用中文名称。`/list`、`/usage`、`/monitor` 和低余额告警会读取 `credentials.plan_type`，将支持的套餐显示为 `PLUS`、`K12`、`TEAM` 或 `FREE`。结果较长时会自动拆分成多条 Telegram 消息。
 
-`/usage` 默认只显示可用账户，并在结尾说明排除了多少个不可用账户。使用 `/monitor` 可查看不可用账户及具体原因。账户列表支持：
+`/list` 和 `/usage` 不传分组 ID 时默认查询 `/monitor` 当前监听的分组。传入分组 ID 时只临时查询指定分组，不会改变监听设置。`/usage` 只显示可用账户，并在结尾说明排除了多少个不可用账户；使用 `/monitor` 可查看监听分组中的不可用账户及具体原因。
 
 ```text
-/list                 查看全部账户
-/list available       只查看可用账户
-/list unavailable     只查看不可用账户
+/list                         查看监听分组的全部账户
+/list --available             查看监听分组的可用账户
+/list --unavailable           查看监听分组的不可用账户
+/list 1                       查看分组 1 的全部账户
+/list 1 --unavailable         查看分组 1 的不可用账户
+/usage                        查看监听分组的可用账户用量
+/usage 1                      查看分组 1 的可用账户用量
 ```
 
-参数也支持中文：`全部`、`可用`、`不可用`。
+选项统一使用 `--` 前缀；不再接受 `all`、`available`、`unavailable`、`new` 等无前缀写法。
 
 ### 可用账户规则
 

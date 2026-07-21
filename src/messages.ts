@@ -7,8 +7,15 @@ export type TemplateCommandAction = "show" | "new" | "invalid";
 export function parseTemplateCommand(input: string): TemplateCommandAction {
   const argument = input.trim().toLowerCase();
   if (argument === "") return "show";
-  if (argument === "new") return "new";
+  if (argument === "--new") return "new";
   return "invalid";
+}
+
+export function parseOptionalGroupId(input: string): string | null | undefined {
+  const tokens = input.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  if (tokens.length !== 1 || !/^\d+$/.test(tokens[0])) return undefined;
+  return tokens[0];
 }
 
 export function formatAccountTemplate(template: JsonObject): string {

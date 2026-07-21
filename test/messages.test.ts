@@ -1,11 +1,19 @@
 import { expect, test } from "bun:test";
-import { formatAccountTemplate, parseTemplateCommand, splitTelegramText } from "../src/messages";
+import { formatAccountTemplate, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "../src/messages";
 
 test("parses template command actions", () => {
   expect(parseTemplateCommand("")).toBe("show");
-  expect(parseTemplateCommand("  new  ")).toBe("new");
-  expect(parseTemplateCommand("NEW")).toBe("new");
+  expect(parseTemplateCommand("  --new  ")).toBe("new");
+  expect(parseTemplateCommand("--NEW")).toBe("new");
+  expect(parseTemplateCommand("new")).toBe("invalid");
   expect(parseTemplateCommand("replace")).toBe("invalid");
+});
+
+test("parses an optional group ID", () => {
+  expect(parseOptionalGroupId("")).toBeNull();
+  expect(parseOptionalGroupId("  7  ")).toBe("7");
+  expect(parseOptionalGroupId("7 8")).toBeUndefined();
+  expect(parseOptionalGroupId("--all")).toBeUndefined();
 });
 
 test("formats account template as readable JSON", () => {

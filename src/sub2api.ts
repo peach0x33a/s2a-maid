@@ -165,12 +165,27 @@ export function formatManagedAccountName(account: ManagedAccount): string {
 
 export type AccountListFilter = "all" | "available" | "unavailable";
 
-export function parseAccountListFilter(value: string): AccountListFilter | null {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || normalized === "all" || normalized === "全部") return "all";
-  if (["available", "usable", "可用"].includes(normalized)) return "available";
-  if (["unavailable", "unusable", "不可用"].includes(normalized)) return "unavailable";
-  return null;
+export interface AccountListCommand {
+  groupId: string | null;
+  filter: AccountListFilter;
+}
+
+export function parseAccountListCommand(value: string): AccountListCommand | null {
+  let groupId: string | null = null;
+  let filter: AccountListFilter = "all";
+  let hasFilter = false;
+  for (const token of value.trim().split(/\s+/).filter(Boolean)) {
+    const normalized = token.toLowerCase();
+    if (["--all", "--available", "--unavailable"].includes(normalized)) {
+      if (hasFilter) return null;
+      filter = normalized.slice(2) as AccountListFilter;
+      hasFilter = true;
+      continue;
+    }
+    if (!/^\d+$/.test(token) || groupId !== null) return null;
+    groupId = token;
+  }
+  return { groupId, filter };
 }
 
 export function filterAccounts(accounts: ManagedAccount[], filter: AccountListFilter): ManagedAccount[] {
