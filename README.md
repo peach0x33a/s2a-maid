@@ -141,7 +141,8 @@ x-api-key: <admin-api-key>
 
 | 命令 | 作用 |
 |---|---|
-| `/template` | 上传现有 S2A 账户文件，使用第一条账户生成模板 |
+| `/template` | 查看当前账户模板 |
+| `/template new` | 上传现有 S2A 账户文件，使用第一条账户生成新模板并覆盖旧模板 |
 | `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建 Sub2API 账户 |
 | `/list` | 查看当前分组全部账户；支持 `available`、`unavailable` 参数 |
 | `/usage` | 查看可用账户的逐账户用量、总额度和分组限额 |
@@ -152,7 +153,7 @@ x-api-key: <admin-api-key>
 
 ## 账户模板
 
-发送 `/template` 后上传单个 S2A 账户、账户数组或包含 `accounts` 的 Sub2API 导出文件。机器人使用第一条账户生成模板。
+发送 `/template` 可查看当前保存的模板。发送 `/template new` 后上传单个 S2A 账户、账户数组或包含 `accounts` 的 Sub2API 导出文件，机器人使用第一条账户生成新模板并直接覆盖旧模板。保存成功后会输出实际写入的完整模板信息。
 
 模板只保存可复用配置，不保存账户身份或动态状态：
 

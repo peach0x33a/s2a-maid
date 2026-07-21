@@ -13,7 +13,7 @@ import {
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows } from "./usage";
-import { splitTelegramText } from "./messages";
+import { formatAccountTemplate, parseTemplateCommand, splitTelegramText } from "./messages";
 import type { JsonObject } from "./types";
 
 export interface BotDependencies {
@@ -184,8 +184,22 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
   bot.command("template", async (ctx) => {
     const chat = ctx.chat;
     if (!isAllowedGroup(chat, dependencies.allowedChatIds) || !ctx.from) return;
+    const action = parseTemplateCommand(ctx.match ?? "");
+    if (action === "invalid") {
+      await ctx.reply("参数无效。使用 /template 查看当前模板，或使用 /template new 设置新模板。");
+      return;
+    }
+    if (action === "show") {
+      const template = dependencies.store.getTemplate();
+      if (!template) {
+        await ctx.reply("尚未设置账户模板。使用 /template new 上传现有的 S2A 账户文件。");
+        return;
+      }
+      await replyLong(ctx, `当前账户模板：\n\n${formatAccountTemplate(template)}`);
+      return;
+    }
     dependencies.store.setMode(chat.id, ctx.from.id, "template");
-    await ctx.reply("请上传现有的 S2A 账户文件，系统将使用第一条账户生成模板。");
+    await ctx.reply("请上传现有的 S2A 账户文件。将使用第一条账户生成新模板，并覆盖当前模板。");
   });
 
   bot.command("acc", async (ctx) => {
@@ -204,7 +218,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 设置账户模板\n/acc 导入账户\n/list [all|available|unavailable] 查看账户\n/usage 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作");
+    await ctx.reply("可用命令：\n/template 查看账户模板\n/template new 设置新模板\n/acc 导入账户\n/list [all|available|unavailable] 查看账户\n/usage 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作");
   });
 
   bot.on("message", async (ctx) => {
@@ -253,15 +267,16 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
         await ctx.reply(`已读取 ${nativeAccounts} 条 S2A 账户。`);
       }
       if (mode === "template") {
-        dependencies.store.setTemplate(extractAccountTemplate(accounts[0]));
+        const template = extractAccountTemplate(accounts[0]);
+        dependencies.store.setTemplate(template);
         dependencies.store.clearMode(chat.id, ctx.from.id);
-        await ctx.reply("账户模板已保存。");
+        await replyLong(ctx, `账户模板已保存：\n\n${formatAccountTemplate(template)}`);
         return;
       }
 
       const template = dependencies.store.getTemplate();
       if (!template) {
-        await ctx.reply("尚未设置账户模板，请先使用 /template。");
+        await ctx.reply("尚未设置账户模板，请先使用 /template new。");
         return;
       }
       const merged = accounts.map((account) => {

@@ -1,4 +1,19 @@
+import type { JsonObject } from "./types";
+
 const TELEGRAM_SAFE_TEXT_LENGTH = 3900;
+
+export type TemplateCommandAction = "show" | "new" | "invalid";
+
+export function parseTemplateCommand(input: string): TemplateCommandAction {
+  const argument = input.trim().toLowerCase();
+  if (argument === "") return "show";
+  if (argument === "new") return "new";
+  return "invalid";
+}
+
+export function formatAccountTemplate(template: JsonObject): string {
+  return JSON.stringify(template, null, 2);
+}
 
 /** Split long Telegram text at line boundaries while preserving all content. */
 export function splitTelegramText(text: string, maxLength = TELEGRAM_SAFE_TEXT_LENGTH): string[] {

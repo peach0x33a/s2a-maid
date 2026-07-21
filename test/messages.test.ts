@@ -1,5 +1,18 @@
 import { expect, test } from "bun:test";
-import { splitTelegramText } from "../src/messages";
+import { formatAccountTemplate, parseTemplateCommand, splitTelegramText } from "../src/messages";
+
+test("parses template command actions", () => {
+  expect(parseTemplateCommand("")).toBe("show");
+  expect(parseTemplateCommand("  new  ")).toBe("new");
+  expect(parseTemplateCommand("NEW")).toBe("new");
+  expect(parseTemplateCommand("replace")).toBe("invalid");
+});
+
+test("formats account template as readable JSON", () => {
+  expect(formatAccountTemplate({ platform: "openai", concurrency: 2 })).toBe(
+    '{\n  "platform": "openai",\n  "concurrency": 2\n}',
+  );
+});
 
 test("splits long Telegram messages without losing content", () => {
   const text = Array.from({ length: 20 }, (_, index) => `line-${index}-${"x".repeat(15)}`).join("\n");
