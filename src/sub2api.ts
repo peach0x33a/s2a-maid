@@ -179,6 +179,42 @@ export function filterAccounts(accounts: ManagedAccount[], filter: AccountListFi
   return accounts;
 }
 
+export function accountStatusSummary(accounts: ManagedAccount[]): string {
+  const counts = new Map<string, number>();
+  for (const account of accounts) {
+    const category = accountStatusCategory(account);
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => statusCategoryOrder(left) - statusCategoryOrder(right) || left.localeCompare(right))
+    .map(([category, count]) => `${category} ${count} 个`)
+    .join("，");
+}
+
+function accountStatusCategory(account: ManagedAccount): string {
+  if (isUsableAccount(account)) return "200";
+  const detail = [account.error_message, account.temp_unschedulable_reason]
+    .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+    .join(" ");
+  const explicitCode = detail.match(/(?:^|\D)([45]\d\d)(?:\D|$)/)?.[1];
+  if (explicitCode) return explicitCode;
+  const normalized = detail.toLowerCase();
+  if (/unauthorized|invalid[_ ]?token|authentication/.test(normalized)) return "401";
+  if (/forbidden|permission denied/.test(normalized)) return "403";
+  if (/too many requests|rate[_ -]?limit/.test(normalized) || account.rate_limited_at) return "429";
+  if (/upstream|server error|bad gateway|service unavailable/.test(normalized)) return "5xx";
+  if (account.status === "paused") return "暂停";
+  if (account.schedulable === false) return "不可调度";
+  if (account.status === "error") return "其他错误";
+  return account.status ? `状态 ${account.status}` : "状态未知";
+}
+
+function statusCategoryOrder(category: string): number {
+  if (/^\d{3}$/.test(category)) return Number(category);
+  const order: Record<string, number> = { "5xx": 599, "暂停": 600, "不可调度": 601, "其他错误": 602, "状态未知": 604 };
+  return order[category] ?? 603;
+}
+
 export function unavailableAccountReason(account: ManagedAccount): string | null {
   if (isUsableAccount(account)) return null;
 

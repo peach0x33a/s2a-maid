@@ -3,6 +3,7 @@ import { AccountInputError, extractAccountTemplate, mergeAndValidateAccount, par
 import { extractJsonFilesFromZip, isZipArchive } from "./archive";
 import type { Store } from "./database";
 import {
+  accountStatusSummary,
   filterAccounts,
   formatManagedAccountName,
   isUsableAccount,
@@ -87,9 +88,11 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       });
       const usableCount = accounts.filter(isUsableAccount).length;
       const filterLabel = filter === "available" ? "可用账户" : filter === "unavailable" ? "不可用账户" : "全部账户";
+      const summary = filter === "available" ? "" : `\n\n总计：${accountStatusSummary(selected)}`;
       await replyLong(
         ctx,
-        `分组 ${groupId} ${filterLabel}（显示 ${selected.length} 个；全部 ${accounts.length} 个，可用 ${usableCount} 个）：\n\n${lines.join("\n")}`,
+        `分组 ${groupId} ${filterLabel}（显示 ${selected.length} 个；全部 ${accounts.length} 个，可用 ${usableCount} 个）：\n\n` +
+        `${lines.join("\n")}${summary}`,
       );
     } catch (error) {
       console.error("Account listing failed:", error);

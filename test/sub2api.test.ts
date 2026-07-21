@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   accountPlanLabel,
+  accountStatusSummary,
   filterAccounts,
   formatManagedAccountName,
   isUsableAccount,
@@ -35,6 +36,21 @@ test("classifies unavailable account reasons", () => {
   expect(unavailableAccountReason({ id: 3, status: "active", schedulable: false, temp_unschedulable_reason: "rate_limit" })).toBe("429 请求受限");
   expect(unavailableAccountReason({ id: 4, status: "paused" })).toBe("账户已暂停");
   expect(unavailableAccountReason({ id: 5, status: "error", error_message: "refresh failed" })).toBe("账户错误：refresh failed");
+});
+
+test("summarizes usable and unavailable accounts by status code", () => {
+  const accounts = [
+    { id: 1, status: "active", schedulable: true },
+    { id: 2, status: "active" },
+    { id: 3, status: "error", error_message: "HTTP 401 Unauthorized" },
+    { id: 4, status: "error", error_message: "Workspace deactivated (402)" },
+    { id: 5, status: "error", error_message: "429 Too Many Requests" },
+    { id: 6, status: "active", schedulable: false },
+    { id: 7, status: "paused" },
+  ];
+  expect(accountStatusSummary(accounts)).toBe(
+    "200 2 个，401 1 个，402 1 个，429 1 个，暂停 1 个，不可调度 1 个",
+  );
 });
 
 test("loads every account page instead of stopping at the default first 20", async () => {
