@@ -29,31 +29,62 @@ describe("account input", () => {
     expect(() => parseAccountPayload('["not an account"]')).toThrow(AccountInputError);
   });
 
-  test("extracts reusable defaults without credentials or live usage snapshots", () => {
+  test("extracts reusable defaults including proxy and groups without account identity or expiry", () => {
     const template = extractAccountTemplate({
+      id: 9,
       name: "old-account",
       platform: "openai",
       type: "oauth",
       credentials: { access_token: "secret", model_mapping: { a: "b" } },
       concurrency: 20,
-      group_ids: [3],
-      extra: { privacy_mode: true, codex_5h_used_percent: 35, codex_7d_reset_at: "old" },
+      group_ids: [3, 4],
+      proxy_id: 7,
+      expires_at: 1785137558,
+      auto_pause_on_expired: true,
+      extra: {
+        privacy_mode: "training_off",
+        openai_compact_mode: "force_on",
+        email: "person@example.com",
+        name: "person@example.com",
+        source: "frcibly_k12",
+        last_refresh: "2026-07-17T07:32:38Z",
+        codex_5h_used_percent: 35,
+        codex_7d_reset_at: "old",
+      },
     });
     expect(template).toEqual({
       platform: "openai",
       type: "oauth",
       concurrency: 20,
-      extra: { privacy_mode: true },
+      group_ids: [3, 4],
+      proxy_id: 7,
+      auto_pause_on_expired: true,
+      extra: { privacy_mode: "training_off", openai_compact_mode: "force_on" },
       credentials: { model_mapping: { a: "b" } },
     });
   });
 
-  test("validates the merged result rather than partial import fields", () => {
-    const account = mergeAndValidateAccount(
-      { name: "template", platform: "openai", type: "oauth", credentials: { token: "template", refresh: "keep" } },
-      { name: "import", credentials: { token: "import" } },
-    );
-    expect(account.credentials).toEqual({ token: "import", refresh: "keep" });
+  test("normalizes legacy group and proxy objects into reusable IDs", () => {
+    expect(extractAccountTemplate({
+      platform: "openai",
+      type: "oauth",
+      credentials: {},
+      group_id: "5",
+      account_groups: [{ group: { id: 6 } }],
+      proxy: { id: 8, name: "private proxy" },
+    })).toMatchObject({ group_ids: ["5", 6], proxy_id: 8 });
+  });
+
+  test("requires imports to declare the same platform as the template", () => {
+    const template = { platform: "openai", type: "oauth", credentials: { refresh: "keep" } };
+    const account = mergeAndValidateAccount(template, {
+      name: "import",
+      platform: "openai",
+      credentials: { token: "import" },
+    });
+    expect(account.credentials).toEqual({ refresh: "keep", token: "import" });
+    expect(() => mergeAndValidateAccount(template, { name: "missing platform", credentials: {} })).toThrow("缺少有效的 platform");
+    expect(() => mergeAndValidateAccount(template, { name: "wrong", platform: "anthropic", credentials: {} })).toThrow("与模板平台 openai 不一致");
     expect(() => mergeAndValidateAccount({}, { name: "missing fields" })).toThrow(AccountInputError);
   });
 });

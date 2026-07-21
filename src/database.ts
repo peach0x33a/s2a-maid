@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { extractAccountTemplate } from "./accounts";
 import type { JsonObject } from "./types";
 
 export type InputMode = "template" | "accounts";
@@ -43,7 +44,11 @@ export class Store {
 
   getTemplate(): JsonObject | null {
     const row = this.db.query<{ value: string }, []>("SELECT value FROM settings WHERE name = 'template'").get();
-    return row ? JSON.parse(row.value) as JsonObject : null;
+    if (!row) return null;
+    const stored = JSON.parse(row.value) as JsonObject;
+    const sanitized = extractAccountTemplate(stored);
+    if (JSON.stringify(sanitized) !== JSON.stringify(stored)) this.setTemplate(sanitized);
+    return sanitized;
   }
 
   setTemplate(template: JsonObject): void {

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import {
+  accountPlanLabel,
   filterAccounts,
+  formatManagedAccountName,
   isUsableAccount,
   parseAccountListFilter,
   Sub2ApiClient,
@@ -14,6 +16,17 @@ test("only active schedulable accounts contribute to quota totals", () => {
   expect(isUsableAccount({ id: 4, status: "error", schedulable: true })).toBe(false);
   expect(isUsableAccount({ id: 5, status: "paused" })).toBe(false);
   expect(isUsableAccount({ id: 6 })).toBe(false);
+});
+
+test("labels supported account plans from credentials.plan_type", () => {
+  expect(accountPlanLabel({ id: 1, credentials: { plan_type: "plus" }, extra: { source: "frcibly_k12" } })).toBe("PLUS");
+  expect(accountPlanLabel({ id: 2, credentials: { plan_type: "k12" } })).toBe("K12");
+  expect(accountPlanLabel({ id: 3, credentials: { plan_type: "team" } })).toBe("TEAM");
+  expect(accountPlanLabel({ id: 4, credentials: { plan_type: "free" } })).toBe("FREE");
+  expect(accountPlanLabel({ id: 5, credentials: {} })).toBeNull();
+  expect(accountPlanLabel({ id: 6, extra: { plan_type: "plus" } })).toBeNull();
+  expect(formatManagedAccountName({ id: 7, name: "alice", credentials: { plan_type: "team" } })).toBe("alice [TEAM]");
+  expect(formatManagedAccountName({ id: 8, name: "bob" })).toBe("bob");
 });
 
 test("classifies unavailable account reasons", () => {

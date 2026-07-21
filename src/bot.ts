@@ -4,6 +4,7 @@ import { extractJsonFilesFromZip, isZipArchive } from "./archive";
 import type { Store } from "./database";
 import {
   filterAccounts,
+  formatManagedAccountName,
   isUsableAccount,
   parseAccountListFilter,
   unavailableAccountReason,
@@ -39,7 +40,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     const checked = status.lastCheckedAt ? new Date(status.lastCheckedAt).toLocaleString("zh-CN") : "尚未检查";
     const unavailableDetails = status.unavailableAccounts.length > 0
       ? `\n\n不可用账户（${status.unavailableAccounts.length} 个）：\n${status.unavailableAccounts.map((account) =>
-        `- ${account.name ?? "未命名"} (ID: ${account.id})：${account.reason}`
+        `- ${account.displayName} (ID: ${account.id})：${account.reason}`
       ).join("\n")}`
       : "";
     await replyLong(
@@ -80,9 +81,9 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       }
       const lines = selected.map((account, index) => {
         if (isUsableAccount(account)) {
-          return `${index + 1}. ${account.name ?? "未命名"} (ID: ${account.id}) · 可用`;
+          return `${index + 1}. ${formatManagedAccountName(account)} (ID: ${account.id}) · 可用`;
         }
-        return `${index + 1}. ${account.name ?? "未命名"} (ID: ${account.id}) · ${unavailableAccountReason(account) ?? "不可用"}`;
+        return `${index + 1}. ${formatManagedAccountName(account)} (ID: ${account.id}) · ${unavailableAccountReason(account) ?? "不可用"}`;
       });
       const usableCount = accounts.filter(isUsableAccount).length;
       const filterLabel = filter === "available" ? "可用账户" : filter === "unavailable" ? "不可用账户" : "全部账户";
@@ -129,10 +130,10 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
             total.accounts += 1;
             totals.set(window.key, total);
           }
-          results.push(`• ${account.name ?? "未命名"} (ID: ${account.id})\n  ${lines.join("\n  ")}`);
+          results.push(`• ${formatManagedAccountName(account)} (ID: ${account.id})\n  ${lines.join("\n  ")}`);
         } catch (error) {
           console.error(`Usage query failed for account ${account.id}:`, error);
-          results.push(`• ${account.name ?? "未命名"} (ID: ${account.id})【查询失败，不计入总额度】`);
+          results.push(`• ${formatManagedAccountName(account)} (ID: ${account.id})【查询失败，不计入总额度】`);
         }
       }
       const totalLines = [...totals.values()].map((total) =>
@@ -282,7 +283,13 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       const merged = accounts.map((account) => {
         const result = mergeAndValidateAccount(template, account);
         const groupId = dependencies.monitor.getGroupId();
-        if (groupId) result.group_ids = [Number.isNaN(Number(groupId)) ? groupId : Number(groupId)];
+        if (groupId) {
+          const selectedGroupId = Number.isNaN(Number(groupId)) ? groupId : Number(groupId);
+          const existingGroupIds = Array.isArray(result.group_ids) ? result.group_ids : [];
+          result.group_ids = [...existingGroupIds, selectedGroupId].filter((id, index, all) =>
+            all.findIndex((candidate) => String(candidate) === String(id)) === index
+          );
+        }
         return result;
       });
       for (const [index, account] of merged.entries()) {

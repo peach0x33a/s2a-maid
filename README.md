@@ -157,12 +157,13 @@ x-api-key: <admin-api-key>
 
 模板只保存可复用配置，不保存账户身份或动态状态：
 
-- 保留平台、账户类型、并发数、优先级、倍率等静态配置；
-- 仅保留 `credentials.model_mapping`，不保留 access token、refresh token 等账户凭据；
-- 不保留账户名称、ID、分组关系或代理关联；
+- 保留 `platform`、账户类型、并发数、优先级、倍率等静态配置；
+- 保留 `proxy_id` 和 `group_ids`；关系对象会转换成对应 ID；
+- 仅保留 `credentials.model_mapping`，不保留 access token、refresh token、`plan_type` 等账户凭据或属性；
+- 不保留账户名称、ID、`expires_at`，也不保留 `extra.email`、`extra.name`、`extra.source`、`extra.last_refresh`；
 - 不保留 `codex_5h_*`、`codex_7d_*`、usage、quota、reset 等动态用量快照。
 
-发送 `/acc` 时，转换后的账户覆盖模板同名字段，并自动加入 `/group` 当前选中的分组。
+`platform` 是模板的导入约束。发送 `/acc` 时，每条输入账户都必须显式包含与模板相同的 `platform`，缺失或不一致都会拒绝导入。转换后的账户覆盖模板同名字段；若已通过 `/group` 选择分组，该分组会追加到模板保留的 `group_ids`，不会覆盖原有分组。
 
 ## 支持的输入格式
 
@@ -212,7 +213,7 @@ Codex auth.json → S2A 账户格式
 GET /api/v1/admin/accounts/{id}/usage
 ```
 
-当前支持常见的 5 小时、7 天、每日和每周窗口。显示时使用中文名称。结果较长时会自动拆分成多条 Telegram 消息。
+当前支持常见的 5 小时、7 天、每日和每周窗口。显示时使用中文名称。`/list`、`/usage`、`/monitor` 和低余额告警会读取 `credentials.plan_type`，将支持的套餐显示为 `PLUS`、`K12`、`TEAM` 或 `FREE`。结果较长时会自动拆分成多条 Telegram 消息。
 
 `/usage` 默认只显示可用账户，并在结尾说明排除了多少个不可用账户。使用 `/monitor` 可查看不可用账户及具体原因。账户列表支持：
 

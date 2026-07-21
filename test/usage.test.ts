@@ -15,9 +15,17 @@ test("identifies low remaining quota from standard utilization windows", () => {
   expect(lowQuotaWindows(payload, 10).map((window) => window.key)).toEqual(["five-hour"]);
 });
 
-test("accepts fractional utilization values", () => {
+test("treats fractional utilization values as percentages", () => {
   const windows = extractUsageWindows({ windows: [{ name: "five-hour", utilization: 0.95 }] });
-  expect(windows[0]?.remainingPercent).toBeCloseTo(5);
+  expect(windows[0]?.remainingPercent).toBeCloseTo(99.05);
+});
+
+test("treats utilization 1 as one percent rather than a full fractional ratio", () => {
+  const windows = extractUsageWindows({ windows: [{ name: "seven-day", utilization: 1 }] });
+  expect(windows).toEqual([
+    { key: "seven-day", label: "7 天窗口", utilization: 1, remainingPercent: 99 },
+  ]);
+  expect(lowQuotaWindows({ windows: [{ name: "seven-day", utilization: 1 }] }, 10)).toEqual([]);
 });
 
 test("deduplicates an account window and allows a new alert after recovery", () => {

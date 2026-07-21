@@ -26,6 +26,8 @@ export interface ManagedAccount {
   group_id?: string | number;
   group_ids?: Array<string | number>;
   group?: { id?: string | number };
+  credentials?: Record<string, unknown>;
+  extra?: Record<string, unknown>;
 }
 
 export class Sub2ApiClient {
@@ -145,6 +147,20 @@ function isManagedAccount(value: unknown): value is ManagedAccount {
 
 export function isUsableAccount(account: ManagedAccount): boolean {
   return account.status === "active" && account.schedulable !== false;
+}
+
+export function accountPlanLabel(account: ManagedAccount): "PLUS" | "K12" | "TEAM" | "FREE" | null {
+  const planType = account.credentials?.plan_type;
+  if (typeof planType !== "string") return null;
+  const normalized = planType.trim().toUpperCase();
+  return ["PLUS", "K12", "TEAM", "FREE"].includes(normalized)
+    ? normalized as "PLUS" | "K12" | "TEAM" | "FREE"
+    : null;
+}
+
+export function formatManagedAccountName(account: ManagedAccount): string {
+  const plan = accountPlanLabel(account);
+  return `${account.name ?? "未命名"}${plan ? ` [${plan}]` : ""}`;
 }
 
 export type AccountListFilter = "all" | "available" | "unavailable";

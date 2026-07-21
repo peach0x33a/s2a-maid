@@ -1,5 +1,5 @@
 import type { Store } from "./database";
-import { isUsableAccount, unavailableAccountReason, type Sub2ApiClient } from "./sub2api";
+import { formatManagedAccountName, isUsableAccount, unavailableAccountReason, type ManagedAccount, type Sub2ApiClient } from "./sub2api";
 import { extractUsageWindows } from "./usage";
 
 export interface AlertNotifier {
@@ -15,7 +15,7 @@ export interface MonitorStatus {
   lastError: string | null;
   totalAccounts: number;
   usableAccounts: number;
-  unavailableAccounts: Array<{ id: string | number; name?: string; reason: string }>;
+  unavailableAccounts: Array<{ id: string | number; displayName: string; reason: string }>;
 }
 
 export class UsageMonitor {
@@ -25,7 +25,7 @@ export class UsageMonitor {
   private lastError: string | null = null;
   private totalAccounts = 0;
   private usableAccounts = 0;
-  private unavailableAccounts: Array<{ id: string | number; name?: string; reason: string }> = [];
+  private unavailableAccounts: Array<{ id: string | number; displayName: string; reason: string }> = [];
 
   constructor(
     private readonly sub2api: Sub2ApiClient,
@@ -81,7 +81,7 @@ export class UsageMonitor {
         .filter((account) => !isUsableAccount(account))
         .map((account) => ({
           id: account.id,
-          name: account.name,
+          displayName: formatManagedAccountName(account),
           reason: unavailableAccountReason(account) ?? "状态未知",
         }));
       this.lastError = null;
@@ -102,7 +102,7 @@ export class UsageMonitor {
     }
   }
 
-  private async checkAccount(account: { id: string | number; name?: string }): Promise<void> {
+  private async checkAccount(account: ManagedAccount): Promise<void> {
     const accountId = String(account.id);
     const payload = await this.sub2api.getUsage(account.id);
     for (const window of extractUsageWindows(payload)) {
@@ -112,7 +112,7 @@ export class UsageMonitor {
       }
       if (!this.store.claimAlert(accountId, window.key)) continue;
 
-      const name = account.name ?? accountId;
+      const name = formatManagedAccountName(account);
       await this.telegram.sendMessage(
         this.alertChatId,
         formatLowQuotaAlert(name, accountId, window.label, window.remainingPercent),

@@ -23,8 +23,8 @@ export function extractUsageWindows(payload: unknown): UsageWindow[] {
     if (isRecord(value)) {
       const rawUtilization = numeric(value.utilization);
       if (rawUtilization !== null) {
-        // Sub2API-compatible backends may expose utilization as either 95 or 0.95.
-        const utilization = rawUtilization <= 1 ? rawUtilization * 100 : rawUtilization;
+        // Sub2API exposes utilization as a percentage in the 0–100 range, including fractional percentages.
+        const utilization = rawUtilization;
         const rawLabel = stringValue(value.name) ?? stringValue(value.label) ?? stringValue(value.window)
           ?? stringValue(value.period) ?? path;
         const label = friendlyUsageLabel(rawLabel, path);

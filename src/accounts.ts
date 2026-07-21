@@ -85,22 +85,33 @@ export function validateAccount(value: JsonObject): asserts value is Account {
 }
 
 const DYNAMIC_EXTRA_FIELDS = /(^|_)(usage|used|utilization|reset|resets|remaining|quota|window)(_|$)/i;
+const ACCOUNT_SPECIFIC_EXTRA_FIELDS = new Set(["email", "name", "source", "last_refresh"]);
 
-/** Extract only reusable account defaults; never persist credentials or live usage snapshots. */
+/** Extract only reusable account defaults; never persist account identity, credentials, expiry, or live usage snapshots. */
 export function extractAccountTemplate(account: JsonObject): JsonObject {
   const template: JsonObject = {};
   for (const [key, value] of Object.entries(account)) {
-    if (["name", "credentials", "id", "group_id", "group_ids", "groups", "account_groups", "proxy_key", "proxy_id"].includes(key)) continue;
+    if ([
+      "name", "credentials", "id", "group", "group_id", "group_ids", "groups", "account_groups",
+      "proxy", "proxy_key", "proxy_id", "expires_at",
+    ].includes(key)) continue;
     if (key === "extra" && isJsonObject(value)) {
       const extra: JsonObject = {};
       for (const [extraKey, extraValue] of Object.entries(value)) {
-        if (!DYNAMIC_EXTRA_FIELDS.test(extraKey)) extra[extraKey] = clone(extraValue);
+        if (!DYNAMIC_EXTRA_FIELDS.test(extraKey) && !ACCOUNT_SPECIFIC_EXTRA_FIELDS.has(extraKey)) {
+          extra[extraKey] = clone(extraValue);
+        }
       }
       if (Object.keys(extra).length > 0) template.extra = extra;
       continue;
     }
     template[key] = clone(value);
   }
+
+  const groupIds = extractGroupIds(account);
+  if (groupIds.length > 0) template.group_ids = groupIds;
+  const proxyId = extractRelationId(account.proxy_id) ?? extractRelationId(account.proxy);
+  if (proxyId !== undefined) template.proxy_id = proxyId;
 
   if (isJsonObject(account.credentials) && isJsonObject(account.credentials.model_mapping)) {
     template.credentials = { model_mapping: clone(account.credentials.model_mapping) };
@@ -109,8 +120,51 @@ export function extractAccountTemplate(account: JsonObject): JsonObject {
 }
 
 export function mergeAndValidateAccount(template: JsonObject, account: JsonObject): Account {
+  const templatePlatform = template.platform;
+  if (typeof templatePlatform === "string" && templatePlatform.trim() !== "") {
+    if (typeof account.platform !== "string" || account.platform.trim() === "") {
+      throw new AccountInputError(`账户缺少有效的 platform；模板平台为 ${templatePlatform}`);
+    }
+    if (account.platform !== templatePlatform) {
+      throw new AccountInputError(`账户平台 ${account.platform} 与模板平台 ${templatePlatform} 不一致，已拒绝导入`);
+    }
+  }
   const merged = deepMerge(template, account);
   if (!isJsonObject(merged)) throw new AccountInputError("账户必须是 JSON 对象");
   validateAccount(merged);
   return merged;
+}
+
+function extractGroupIds(account: JsonObject): JsonValue[] {
+  const candidates: JsonValue[] = [];
+  if (Array.isArray(account.group_ids)) candidates.push(...account.group_ids);
+  else if (account.group_id !== undefined) candidates.push(account.group_id);
+  const singleGroupId = extractGroupRelationId(account.group);
+  if (singleGroupId !== undefined) candidates.push(singleGroupId);
+  for (const key of ["groups", "account_groups"] as const) {
+    const relations = account[key];
+    if (!Array.isArray(relations)) continue;
+    for (const relation of relations) {
+      const id = extractGroupRelationId(relation);
+      if (id !== undefined) candidates.push(id);
+    }
+  }
+  return candidates.filter((value, index) =>
+    (typeof value === "string" || typeof value === "number") &&
+    candidates.findIndex((candidate) => String(candidate) === String(value)) === index
+  );
+}
+
+function extractRelationId(value: JsonValue | undefined): string | number | undefined {
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (isJsonObject(value) && (typeof value.id === "string" || typeof value.id === "number")) return value.id;
+  return undefined;
+}
+
+function extractGroupRelationId(value: JsonValue | undefined): string | number | undefined {
+  const id = extractRelationId(value);
+  if (id !== undefined) return id;
+  if (!isJsonObject(value)) return undefined;
+  if (typeof value.group_id === "string" || typeof value.group_id === "number") return value.group_id;
+  return extractRelationId(value.group);
 }
