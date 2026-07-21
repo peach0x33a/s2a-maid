@@ -12,10 +12,10 @@ export async function downloadTelegramFile(
   token: string,
   extraHeaders: HeadersInit,
   filePath: string,
-): Promise<string> {
+): Promise<Uint8Array> {
   const response = await createTelegramFetch(extraHeaders)(`${apiRoot}/file/bot${token}/${filePath}`, {
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Telegram file download failed: HTTP ${response.status}`);
-  return response.text();
+  return new Uint8Array(await response.arrayBuffer());
 }

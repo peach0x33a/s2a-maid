@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import { AccountInputError, extractAccountTemplate, mergeAndValidateAccount, parseAccountPayloadDetailed } from "./accounts";
+import { extractJsonFilesFromZip, isZipArchive } from "./archive";
 import type { Store } from "./database";
 import {
   filterAccounts,
@@ -13,6 +14,7 @@ import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows } from "./usage";
 import { splitTelegramText } from "./messages";
+import type { JsonObject } from "./types";
 
 export interface BotDependencies {
   store: Store;
@@ -190,7 +192,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     const chat = ctx.chat;
     if (!isAllowedGroup(chat, dependencies.allowedChatIds) || !ctx.from) return;
     dependencies.store.setMode(chat.id, ctx.from.id, "accounts");
-    await ctx.reply("请上传账户或登录文件。支持 S2A、ChatGPT Session、9router、Codex、AxonHub 和 Codex-Manager 格式。");
+    await ctx.reply("请上传账户或登录文件，也可以上传包含 JSON 文件的 ZIP 压缩包。支持 S2A、ChatGPT Session、9router、Codex、AxonHub 和 Codex-Manager 格式。");
   });
 
   bot.command("cancel", async (ctx) => {
@@ -216,20 +218,39 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
         console.log(`Telegram document ${ctx.update.update_id}: name=${ctx.message.document.file_name ?? "(unnamed)"} size=${ctx.message.document.file_size ?? "unknown"}`);
         await ctx.reply("已收到文件，正在识别格式……");
       }
-      const input = await readJsonInput(ctx, dependencies);
+      const input = await readAccountInput(ctx, dependencies);
       if (!input) {
-        await ctx.reply("请发送 JSON 文本或 JSON 文件。");
+        await ctx.reply("请发送 JSON 文本、JSON 文件或 ZIP 压缩包。");
         return;
       }
-      const parsed = parseAccountPayloadDetailed(input.text, input.sourceName);
-      const accounts = parsed.accounts;
-      const conversionLines = Object.entries(parsed.conversions).map(([format, count]) =>
+      const accounts: JsonObject[] = [];
+      const conversions = new Map<string, number>();
+      let nativeAccounts = 0;
+      for (const file of input.files) {
+        try {
+          const parsed = parseAccountPayloadDetailed(file.text, file.name);
+          accounts.push(...parsed.accounts);
+          nativeAccounts += parsed.nativeAccounts;
+          for (const [format, count] of Object.entries(parsed.conversions)) {
+            conversions.set(format, (conversions.get(format) ?? 0) + count);
+          }
+        } catch (error) {
+          if (input.isArchive && error instanceof AccountInputError) {
+            throw new AccountInputError(`压缩包中的 ${file.name}：${error.message.trim()}`);
+          }
+          throw error;
+        }
+      }
+      const conversionLines = [...conversions].map(([format, count]) =>
         `${format} → S2A 账户格式${count > 1 ? `（${count} 条）` : ""}`
       );
+      if (input.isArchive) {
+        await ctx.reply(`已解压 ${input.files.length} 个 JSON 文件，共读取 ${accounts.length} 条账户。`);
+      }
       if (conversionLines.length > 0) {
         await ctx.reply(`识别完成，正在转换：\n${conversionLines.join("\n")}`);
-      } else if (parsed.nativeAccounts > 0) {
-        await ctx.reply(`已读取 ${parsed.nativeAccounts} 条 S2A 账户。`);
+      } else if (nativeAccounts > 0 && !input.isArchive) {
+        await ctx.reply(`已读取 ${nativeAccounts} 条 S2A 账户。`);
       }
       if (mode === "template") {
         dependencies.store.setTemplate(extractAccountTemplate(accounts[0]));
@@ -289,27 +310,38 @@ function isAllowedGroup(chat: Context["chat"], allowedChatIds: Set<number>): boo
   return (chat.type === "group" || chat.type === "supergroup") && allowedChatIds.has(chat.id);
 }
 
-interface JsonInput {
+interface AccountInputFile {
+  name: string;
   text: string;
-  sourceName?: string;
 }
 
-async function readJsonInput(ctx: Context, dependencies: BotDependencies): Promise<JsonInput | null> {
+interface AccountInput {
+  files: AccountInputFile[];
+  isArchive: boolean;
+}
+
+async function readAccountInput(ctx: Context, dependencies: BotDependencies): Promise<AccountInput | null> {
   const message = ctx.message;
   if (!message) return null;
-  if ("text" in message && typeof message.text === "string") return { text: message.text, sourceName: "Telegram text" };
+  if ("text" in message && typeof message.text === "string") {
+    return { files: [{ name: "Telegram text", text: message.text }], isArchive: false };
+  }
   if (!("document" in message) || !message.document) return null;
 
   console.log(`Telegram getFile ${ctx.update.update_id}: requesting metadata`);
   const file = await ctx.api.getFile(message.document.file_id);
   if (!file.file_path) throw new Error("Telegram did not return a file path");
   console.log(`Telegram getFile ${ctx.update.update_id}: metadata received`);
-  const text = await downloadTelegramFile(
+  const data = await downloadTelegramFile(
     dependencies.telegramApiBaseUrl,
     dependencies.telegramBotToken,
     dependencies.telegramApiHeaders,
     file.file_path,
   );
-  console.log(`Telegram document ${ctx.update.update_id}: downloaded ${text.length} bytes`);
-  return { text, sourceName: message.document.file_name };
+  console.log(`Telegram document ${ctx.update.update_id}: downloaded ${data.byteLength} bytes`);
+  const sourceName = message.document.file_name ?? "Telegram file";
+  if (isZipArchive(data, sourceName)) {
+    return { files: await extractJsonFilesFromZip(data), isArchive: true };
+  }
+  return { files: [{ name: sourceName, text: new TextDecoder().decode(data).replace(/^\uFEFF/, "") }], isArchive: false };
 }

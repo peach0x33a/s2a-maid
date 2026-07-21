@@ -6,6 +6,7 @@
 
 - 上传现有 Sub2API 账户文件生成可复用模板；
 - 将多种 ChatGPT/Codex 登录文件转换为 S2A 账户格式并创建账户；
+- 自动解压 `/acc` 收到的 ZIP 压缩包，批量导入其中的 JSON 文件；
 - 通过 Telegram 内联按钮选择监控分组；
 - 查看分组账户、逐账户用量和可用账户总额度；
 - 定时检查低额度账户，并向指定 Telegram 群发送去重告警。
@@ -141,7 +142,7 @@ x-api-key: <admin-api-key>
 | 命令 | 作用 |
 |---|---|
 | `/template` | 上传现有 S2A 账户文件，使用第一条账户生成模板 |
-| `/acc` | 上传账户或登录文件，转换并创建 Sub2API 账户 |
+| `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建 Sub2API 账户 |
 | `/list` | 查看当前分组全部账户；支持 `available`、`unavailable` 参数 |
 | `/usage` | 查看可用账户的逐账户用量、总额度和分组限额 |
 | `/monitor` | 查看监控状态及不可用账户的 401、429、暂停等原因 |
@@ -165,6 +166,8 @@ x-api-key: <admin-api-key>
 ## 支持的输入格式
 
 转换规则参考 [GPTSession2CPAandSub2API](https://github.com/gtxx3600/GPTSession2CPAandSub2API)。支持单个对象、对象数组和 `{ "accounts": [...] }` 容器，也支持混合格式批量输入。
+
+`/acc` 也支持 ZIP 压缩包。机器人会递归读取压缩包目录中的 `.json` 文件，忽略其他文件，将所有 JSON 中的账户合并后导入当前号池。单个压缩包最多读取 500 个 JSON 文件，解压后的 JSON 总大小不能超过 50 MB；加密、损坏、无 JSON 文件或包含无效 JSON 的压缩包会被拒绝。
 
 - 原生 S2A/Sub2API account JSON；
 - ChatGPT Web Session；
