@@ -1,10 +1,16 @@
-export function createTelegramFetch(extraHeaders: HeadersInit): typeof fetch {
-  const telegramFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+import { createProxyFetch } from "./proxy";
+
+export function createTelegramFetch(
+  extraHeaders: HeadersInit,
+  proxyUrl: string | null = null,
+  baseFetch: typeof fetch = fetch,
+): typeof fetch {
+  const outboundFetch = createProxyFetch(proxyUrl, baseFetch);
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     new Headers(extraHeaders).forEach((value, name) => headers.set(name, value));
-    return fetch(input, { ...init, headers });
+    return outboundFetch(input, { ...init, headers });
   }) as typeof fetch;
-  return telegramFetch;
 }
 
 export async function downloadTelegramFile(
@@ -12,8 +18,9 @@ export async function downloadTelegramFile(
   token: string,
   extraHeaders: HeadersInit,
   filePath: string,
+  proxyUrl: string | null = null,
 ): Promise<Uint8Array> {
-  const response = await createTelegramFetch(extraHeaders)(`${apiRoot}/file/bot${token}/${filePath}`, {
+  const response = await createTelegramFetch(extraHeaders, proxyUrl)(`${apiRoot}/file/bot${token}/${filePath}`, {
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Telegram file download failed: HTTP ${response.status}`);

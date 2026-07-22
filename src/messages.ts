@@ -26,6 +26,25 @@ export function parseOptionalGroupId(input: string): string | null | undefined {
   return tokens[0];
 }
 
+export type AccountConversionTarget = "S2A 账户格式" | "S2A Codex Agent Identify 账户格式";
+
+export function accountConversionTarget(account: JsonObject): AccountConversionTarget {
+  const credentials = account.credentials;
+  return credentials && typeof credentials === "object" && !Array.isArray(credentials)
+    && credentials.auth_mode === "agentIdentity"
+    ? "S2A Codex Agent Identify 账户格式"
+    : "S2A 账户格式";
+}
+
+export function formatAccountConversionNotice(
+  sourceFormat: string,
+  targetFormat: AccountConversionTarget,
+  count = 1,
+): string {
+  const countLabel = count > 1 ? `（${count} 条）` : "";
+  return `识别到格式 ${sourceFormat}${countLabel}\n转换为→ ${targetFormat}`;
+}
+
 export function formatAccountTemplate(template: JsonObject): string {
   return JSON.stringify(template, null, 2);
 }

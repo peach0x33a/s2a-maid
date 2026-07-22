@@ -17,7 +17,15 @@ import {
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows, usageWindowsForDisplay } from "./usage";
-import { formatAccountTemplate, parseAccountImportMode, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "./messages";
+import {
+  accountConversionTarget,
+  formatAccountConversionNotice,
+  formatAccountTemplate,
+  parseAccountImportMode,
+  parseOptionalGroupId,
+  parseTemplateCommand,
+  splitTelegramText,
+} from "./messages";
 import type { JsonObject } from "./types";
 
 export interface BotDependencies {
@@ -27,6 +35,8 @@ export interface BotDependencies {
   telegramApiBaseUrl: string;
   telegramBotToken: string;
   telegramApiHeaders: HeadersInit;
+  telegramProxyUrl: string | null;
+  codexAgentFetch: typeof fetch;
   monitor: UsageMonitor;
 }
 
@@ -280,15 +290,27 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
             throw error;
           }
         });
-        await ctx.reply(`已识别 ${inputs.length} 条凭据，正在生成并导入 Codex Agent Identity……`);
+        const finalAccounts = [];
+        const noticeCounts = new Map<string, { source: string; target: ReturnType<typeof accountConversionTarget>; count: number }>();
         for (const [index, source] of inputs.entries()) {
-          const converted = await convertCodexAgentInput(source);
+          const converted = await convertCodexAgentInput(source, dependencies.codexAgentFetch);
           const account = buildFinalCodexAgentAccount(
             template,
             converted.authJson,
             selectedGroupId,
             `Codex Agent Identity ${index + 1}`,
           );
+          finalAccounts.push(account);
+          const target = accountConversionTarget(account);
+          const key = `${source.source}\u0000${target}`;
+          const existing = noticeCounts.get(key);
+          noticeCounts.set(key, { source: source.source, target, count: (existing?.count ?? 0) + 1 });
+        }
+        const notices = [...noticeCounts.values()].map(({ source, target, count }) =>
+          formatAccountConversionNotice(source, target, count)
+        );
+        await ctx.reply(notices.join("\n\n"));
+        for (const [index, account] of finalAccounts.entries()) {
           await dependencies.sub2api.createAccount(account, `telegram-codex-agent-${ctx.update.update_id}-${index}`);
         }
         dependencies.store.clearMode(chat.id, ctx.from.id);
@@ -314,14 +336,14 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
           throw error;
         }
       }
-      const conversionLines = [...conversions].map(([format, count]) =>
-        `${format} → S2A 账户格式${count > 1 ? `（${count} 条）` : ""}`
+      const conversionNotices = [...conversions].map(([format, count]) =>
+        formatAccountConversionNotice(format, "S2A 账户格式", count)
       );
       if (input.isArchive) {
         await ctx.reply(`已解压 ${input.files.length} 个 JSON 文件，共读取 ${accounts.length} 条账户。`);
       }
-      if (conversionLines.length > 0) {
-        await ctx.reply(`识别完成，正在转换：\n${conversionLines.join("\n")}`);
+      if (conversionNotices.length > 0) {
+        await ctx.reply(conversionNotices.join("\n\n"));
       } else if (nativeAccounts > 0 && !input.isArchive) {
         await ctx.reply(`已读取 ${nativeAccounts} 条 S2A 账户。`);
       }
@@ -419,6 +441,7 @@ async function readAccountInput(ctx: Context, dependencies: BotDependencies): Pr
     dependencies.telegramBotToken,
     dependencies.telegramApiHeaders,
     file.file_path,
+    dependencies.telegramProxyUrl,
   );
   console.log(`Telegram document ${ctx.update.update_id}: downloaded ${data.byteLength} bytes`);
   const sourceName = message.document.file_name ?? "Telegram file";

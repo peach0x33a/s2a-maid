@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { formatAccountTemplate, parseAccountImportMode, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "../src/messages";
+import {
+  accountConversionTarget,
+  formatAccountConversionNotice,
+  formatAccountTemplate,
+  parseAccountImportMode,
+  parseOptionalGroupId,
+  parseTemplateCommand,
+  splitTelegramText,
+} from "../src/messages";
 
 test("parses account import modes", () => {
   expect(parseAccountImportMode("")).toBe("accounts");
@@ -22,6 +30,24 @@ test("parses an optional group ID", () => {
   expect(parseOptionalGroupId("  7  ")).toBe("7");
   expect(parseOptionalGroupId("7 8")).toBeUndefined();
   expect(parseOptionalGroupId("--all")).toBeUndefined();
+});
+
+test("uses the Codex Agent Identify label only for explicit agentIdentity auth mode", () => {
+  expect(accountConversionTarget({ credentials: { auth_mode: "agentIdentity" } })).toBe(
+    "S2A Codex Agent Identify 账户格式",
+  );
+  expect(accountConversionTarget({ credentials: { auth_mode: "chatgpt" } })).toBe("S2A 账户格式");
+  expect(accountConversionTarget({ credentials: {} })).toBe("S2A 账户格式");
+});
+
+test("formats explicit source and target conversion notices", () => {
+  expect(formatAccountConversionNotice(
+    "ChatGPT Web Session",
+    "S2A Codex Agent Identify 账户格式",
+  )).toBe("识别到格式 ChatGPT Web Session\n转换为→ S2A Codex Agent Identify 账户格式");
+  expect(formatAccountConversionNotice("Codex auth.json", "S2A 账户格式", 2)).toBe(
+    "识别到格式 Codex auth.json（2 条）\n转换为→ S2A 账户格式",
+  );
 });
 
 test("formats account template as readable JSON", () => {

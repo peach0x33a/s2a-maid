@@ -1,8 +1,10 @@
-import { Bot } from "grammy";
+import { Bot, type ApiClientOptions } from "grammy";
 import { registerBotHandlers } from "./bot";
+import { createCodexAgentFetch } from "./codex-agent";
 import { configPathFromArgs, loadConfig } from "./config";
 import { Store } from "./database";
 import { UsageMonitor } from "./monitor";
+import { createProxyFetch, proxyForScope } from "./proxy";
 import { Sub2ApiClient } from "./sub2api";
 import { createTelegramFetch } from "./telegram";
 import { APP_VERSION } from "./version";
@@ -11,13 +13,21 @@ console.log(`s2a-maid v${APP_VERSION}`);
 const configPath = configPathFromArgs();
 const config = loadConfig(configPath);
 const store = new Store(config.databasePath);
+const telegramProxyUrl = proxyForScope(config.proxyUrl, config.proxyScopes, "telegram");
+const sub2ApiProxyUrl = proxyForScope(config.proxyUrl, config.proxyScopes, "sub2api");
+const openAiProxyUrl = proxyForScope(config.proxyUrl, config.proxyScopes, "openai");
 const bot = new Bot(config.telegramBotToken, {
   client: {
     apiRoot: config.telegramApiBaseUrl,
-    fetch: createTelegramFetch(config.telegramApiHeaders),
+    fetch: createTelegramFetch(config.telegramApiHeaders, telegramProxyUrl) as unknown as NonNullable<ApiClientOptions["fetch"]>,
   },
 });
-const sub2api = new Sub2ApiClient(config.sub2ApiBaseUrl, config.sub2ApiAdminApiKey);
+const sub2api = new Sub2ApiClient(
+  config.sub2ApiBaseUrl,
+  config.sub2ApiAdminApiKey,
+  createProxyFetch(sub2ApiProxyUrl),
+);
+const codexAgentFetch = createCodexAgentFetch(openAiProxyUrl);
 const monitor = new UsageMonitor(
   sub2api,
   { sendMessage: (chatId, text) => bot.api.sendMessage(chatId, text) },
@@ -41,6 +51,8 @@ registerBotHandlers(bot, {
   telegramApiBaseUrl: config.telegramApiBaseUrl,
   telegramBotToken: config.telegramBotToken,
   telegramApiHeaders: config.telegramApiHeaders,
+  telegramProxyUrl,
+  codexAgentFetch,
   monitor,
 });
 

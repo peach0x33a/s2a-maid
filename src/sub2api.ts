@@ -32,7 +32,11 @@ export interface ManagedAccount {
 }
 
 export class Sub2ApiClient {
-  constructor(private readonly baseUrl: string, private readonly adminApiKey: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly adminApiKey: string,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {}
 
   async createAccount(account: Account, idempotencyKey: string): Promise<void> {
     await this.request("/api/v1/admin/accounts", {
@@ -84,7 +88,7 @@ export class Sub2ApiClient {
   }
 
   private async request<T>(path: string, init: { method?: string; headers?: HeadersInit; body?: unknown } = {}): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await this.fetcher(`${this.baseUrl}${path}`, {
       method: init.method ?? "GET",
       headers: {
         "x-api-key": this.adminApiKey,

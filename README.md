@@ -108,6 +108,11 @@ base_url = "http://127.0.0.1:8080"
 admin_api_key = ""
 # 仅支持管理员 API Key
 
+[proxy]
+# 可选出站代理；支持 HTTP、HTTPS、SOCKS5 和 SOCKS5H
+url = ""
+scope = [] # "sub2api"、"telegram"、"openai"、"other"
+
 [monitor]
 # 可留空，启动后在 Telegram 群中使用 /group 选择
 group_id = ""
@@ -129,6 +134,34 @@ x-api-key: <admin-api-key>
 ### Telegram Bot API 代理
 
 `telegram.api_base_url` 支持兼容 Telegram Bot API 的代理服务。代理需要额外请求头时，写入 `[telegram.api_headers]`，这些请求头会用于 grammY API 请求和文件下载。
+
+### 出站代理
+
+可以配置 HTTP、HTTPS、SOCKS5 或 SOCKS5H 代理，并通过 `scope` 数组选择作用域：
+
+```toml
+[proxy]
+url = "socks5h://username:password@proxy.example.com:1080"
+scope = ["sub2api", "telegram", "openai"]
+```
+
+`url` 支持：
+
+- `http://host:port`
+- `https://host:port`
+- `socks5://host:port`（本地解析目标域名）
+- `socks5h://host:port`（通过代理解析目标域名，通常更适合受限网络）
+
+四种协议均支持在 URL 中填写用户名和密码。
+
+支持的作用域：
+
+- `sub2api`：Sub2API 管理 API 请求；
+- `telegram`：Telegram Bot API 和 Telegram 文件下载；
+- `openai`：OAuth 刷新、Agent runtime 注册和 task 注册；
+- `other`：保留给不属于以上三类的其他或后续出站 HTTP 请求；当前已分类流量不会因选择 `other` 而被重复代理。
+
+`scope` 可以为空、只包含一个作用域，或组合多个作用域；重复值会自动去重。未选中的流量保持直连。当 `scope` 非空时必须填写 `url`。该设置不同于账号模板中的 `proxy_id`。
 
 ## Telegram 设置
 
@@ -180,10 +213,18 @@ x-api-key: <admin-api-key>
 - AxonHub Codex `auth.json`；
 - Codex-Manager 批量导入 JSON。
 
-非原生格式会明确提示转换来源和目标，例如：
+非原生格式会明确提示转换来源和目标。普通 `/acc` 示例：
 
 ```text
-Codex auth.json → S2A 账户格式
+识别到格式 Codex auth.json
+转换为→ S2A 账户格式
+```
+
+只有使用 `/acc --codex-agent` 或 `/acc -ca`，最终账号的 `credentials.auth_mode` 明确为 `agentIdentity` 时，才显示：
+
+```text
+识别到格式 ChatGPT Web Session
+转换为→ S2A Codex Agent Identify 账户格式
 ```
 
 转换结果统一生成 `platform: "openai"`、`type: "oauth"` 的 S2A 账户，并按来源保留可用字段：
@@ -319,6 +360,7 @@ src/accounts.ts           账户解析、模板提取与合并
 src/session-converter.ts  多格式登录文件转换
 src/sub2api.ts            Sub2API 管理 API 客户端
 src/monitor.ts            定时额度监控
+src/proxy.ts              按作用域分配 HTTP、HTTPS、SOCKS5、SOCKS5H 出站代理
 src/usage.ts              用量窗口提取与中文显示
 src/database.ts           SQLite 存储
 src/config.ts             TOML 配置加载与校验

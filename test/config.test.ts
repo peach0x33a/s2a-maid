@@ -16,6 +16,10 @@ const validConfig = {
     base_url: "http://sub2api.example/",
     admin_api_key: "admin-key",
   },
+  proxy: {
+    url: "socks5h://proxy-user:proxy-password@proxy.example:1080",
+    scope: ["sub2api", "telegram", "openai", "other", "openai"],
+  },
   monitor: {
     group_id: "group-1",
     interval_seconds: 60,
@@ -34,6 +38,8 @@ describe("TOML config", () => {
       alertChatId: -1001234567890,
       sub2ApiBaseUrl: "http://sub2api.example",
       sub2ApiAdminApiKey: "admin-key",
+      proxyUrl: "socks5h://proxy-user:proxy-password@proxy.example:1080",
+      proxyScopes: new Set(["sub2api", "telegram", "openai", "other"]),
       monitorGroupId: "group-1",
       usageCheckIntervalSeconds: 60,
       lowQuotaPercent: 15,
@@ -55,6 +61,8 @@ describe("TOML config", () => {
     expect(config.telegramApiBaseUrl).toBe("https://api.telegram.org");
     expect(config.sub2ApiBaseUrl).toBe("http://127.0.0.1:8080");
     expect(config.sub2ApiAdminApiKey).toBe("admin-key");
+    expect(config.proxyUrl).toBeNull();
+    expect(config.proxyScopes).toEqual(new Set());
     expect(config.usageCheckIntervalSeconds).toBe(300);
     expect(config.lowQuotaPercent).toBe(10);
     expect(config.databasePath).toBe("./s2a-maid.sqlite");
@@ -82,8 +90,38 @@ path = "./state.sqlite"
     }
   });
 
-  test("rejects missing credentials and invalid chat IDs", () => {
+  test("accepts HTTP, HTTPS, SOCKS5, and SOCKS5H proxy URLs", () => {
+    for (const protocol of ["http", "https", "socks5", "socks5h"]) {
+      const config = parseConfig({
+        ...validConfig,
+        proxy: { url: `${protocol}://proxy.example:1080`, scope: ["openai"] },
+      });
+      expect(config.proxyUrl).toBe(`${protocol}://proxy.example:1080`);
+    }
+  });
+
+  test("rejects missing credentials, invalid chat IDs, and invalid scoped proxy settings", () => {
     expect(() => parseConfig({ ...validConfig, sub2api: {} })).toThrow("sub2api.admin_api_key is required");
+    expect(() => parseConfig({
+      ...validConfig,
+      proxy: { url: "ftp://proxy.example:21", scope: ["openai"] },
+    })).toThrow("proxy.url must use http://, https://, socks5://, or socks5h://");
+    expect(() => parseConfig({
+      ...validConfig,
+      proxy: { url: "not-a-url", scope: ["openai"] },
+    })).toThrow("proxy.url must be a valid URL");
+    expect(() => parseConfig({
+      ...validConfig,
+      proxy: { url: "http://proxy.example:8080", scope: "openai" },
+    })).toThrow("proxy.scope must be an array");
+    expect(() => parseConfig({
+      ...validConfig,
+      proxy: { url: "http://proxy.example:8080", scope: ["database"] },
+    })).toThrow("proxy.scope only supports sub2api, telegram, openai, other");
+    expect(() => parseConfig({
+      ...validConfig,
+      proxy: { url: "", scope: ["openai"] },
+    })).toThrow("proxy.url is required when proxy.scope is not empty");
     expect(() => parseConfig({
       ...validConfig,
       telegram: { ...validConfig.telegram, allowed_chat_ids: ["-1001234567890"] },

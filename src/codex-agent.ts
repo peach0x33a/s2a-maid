@@ -1,5 +1,6 @@
 import sodium from "libsodium-wrappers";
 import { mergeAndValidateAccount } from "./accounts";
+import { createProxyFetch } from "./proxy";
 import type { Account, JsonObject } from "./types";
 
 const AUTH_BASE_URL = "https://auth.openai.com";
@@ -50,6 +51,8 @@ export interface CodexAgentConversion {
   source: string;
   authJson: AgentIdentityAuthJson;
 }
+
+export const createCodexAgentFetch = createProxyFetch;
 
 export function agentIdentityToSub2ApiAccount(authJson: AgentIdentityAuthJson, fallbackName = "Codex Agent Identity"): Account {
   const identity = authJson.agent_identity;

@@ -95,6 +95,19 @@ test("creates an Agent Identity account with x-api-key and the final S2A account
   }
 });
 
+test("uses the injected scoped fetcher for Sub2API requests", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(input), init });
+    return Response.json({ data: [] });
+  }) as typeof fetch;
+  const client = new Sub2ApiClient("https://sub2api.example", "admin-test-key", fetcher);
+  await client.listGroups();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.url).toBe("https://sub2api.example/api/v1/admin/groups");
+  expect(new Headers(requests[0]?.init?.headers).get("x-api-key")).toBe("admin-test-key");
+});
+
 test("loads every account page instead of stopping at the default first 20", async () => {
   const requestedPages: number[] = [];
   const server = Bun.serve({

@@ -3,6 +3,7 @@ import {
   buildAgentIdentityAuthJson,
   buildFinalCodexAgentAccount,
   convertCodexAgentInput,
+  createCodexAgentFetch,
   parseCodexAgentPayload,
 } from "../src/codex-agent";
 
@@ -148,6 +149,21 @@ test("discovers Web, Codex OAuth, and S2A credential records", () => {
     "Codex OAuth auth.json",
     "S2A 账户",
   ]);
+});
+
+test("applies the configured HTTP proxy only through the Codex Agent fetch wrapper", async () => {
+  const requests: Array<{ input: string | URL | Request; init?: BunFetchRequestInit }> = [];
+  const baseFetch = (async (input: string | URL | Request, init?: BunFetchRequestInit) => {
+    requests.push({ input, init });
+    return Response.json({ ok: true });
+  }) as typeof fetch;
+  const proxiedFetch = createCodexAgentFetch("http://proxy-user:proxy-password@proxy.example:8080", baseFetch);
+  await proxiedFetch("https://auth.openai.com/test", { method: "POST" });
+  expect(requests[0]?.init).toMatchObject({
+    method: "POST",
+    proxy: "http://proxy-user:proxy-password@proxy.example:8080",
+  });
+  expect(createCodexAgentFetch(null, baseFetch)).toBe(baseFetch);
 });
 
 test("refreshes expired OAuth with form encoding", async () => {

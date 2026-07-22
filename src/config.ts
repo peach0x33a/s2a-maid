@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
+import { PROXY_PROTOCOLS, PROXY_SCOPES, type ProxyScope } from "./proxy";
 import type { JsonObject } from "./types";
 
 export interface Config {
@@ -10,6 +11,8 @@ export interface Config {
   alertChatId: number;
   sub2ApiBaseUrl: string;
   sub2ApiAdminApiKey: string;
+  proxyUrl: string | null;
+  proxyScopes: Set<ProxyScope>;
   monitorGroupId: string | null;
   usageCheckIntervalSeconds: number;
   lowQuotaPercent: number;
@@ -54,6 +57,7 @@ export function parseConfig(value: unknown, configDirectory?: string): Config {
   const root = requireRecord("config", value);
   const telegram = requireRecord("telegram", root.telegram);
   const sub2api = requireRecord("sub2api", root.sub2api);
+  const proxy = optionalRecord("proxy", root.proxy);
   const monitor = requireRecord("monitor", root.monitor);
   const database = optionalRecord("database", root.database);
   const headers = optionalRecord("telegram.api_headers", telegram.api_headers);
@@ -65,6 +69,11 @@ export function parseConfig(value: unknown, configDirectory?: string): Config {
   }
 
   const apiKey = requireString("sub2api.admin_api_key", sub2api.admin_api_key);
+  const proxyScopes = parseProxyScopes(proxy.scope);
+  const proxyUrl = optionalProxyUrl("proxy.url", proxy.url);
+  if (proxyScopes.size > 0 && !proxyUrl) {
+    throw new Error("proxy.url is required when proxy.scope is not empty");
+  }
 
   const threshold = optionalPositiveNumber("monitor.low_quota_percent", monitor.low_quota_percent, 10);
   if (threshold > 100) throw new Error("monitor.low_quota_percent must not exceed 100");
@@ -77,6 +86,8 @@ export function parseConfig(value: unknown, configDirectory?: string): Config {
     alertChatId: requireChatId("telegram.alert_chat_id", telegram.alert_chat_id),
     sub2ApiBaseUrl: optionalString("sub2api.base_url", sub2api.base_url, "http://127.0.0.1:8080").replace(/\/$/, ""),
     sub2ApiAdminApiKey: apiKey,
+    proxyUrl,
+    proxyScopes,
     monitorGroupId: optionalString("monitor.group_id", monitor.group_id) || null,
     usageCheckIntervalSeconds: optionalPositiveNumber("monitor.interval_seconds", monitor.interval_seconds, 300),
     lowQuotaPercent: threshold,
@@ -116,6 +127,35 @@ function optionalString(name: string, value: unknown, fallback = ""): string {
   if (value === undefined) return fallback;
   if (typeof value !== "string") throw new Error(`${name} must be a string`);
   return value.trim() || fallback;
+}
+
+function parseProxyScopes(value: unknown): Set<ProxyScope> {
+  if (value === undefined) return new Set();
+  if (!Array.isArray(value)) throw new Error("proxy.scope must be an array");
+  const allowed = new Set<string>(PROXY_SCOPES);
+  const scopes = new Set<ProxyScope>();
+  for (const item of value) {
+    if (typeof item !== "string" || !allowed.has(item)) {
+      throw new Error(`proxy.scope only supports ${PROXY_SCOPES.join(", ")}`);
+    }
+    scopes.add(item as ProxyScope);
+  }
+  return scopes;
+}
+
+function optionalProxyUrl(name: string, value: unknown): string | null {
+  const raw = optionalString(name, value);
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${name} must be a valid URL`);
+  }
+  if (!PROXY_PROTOCOLS.includes(url.protocol as typeof PROXY_PROTOCOLS[number])) {
+    throw new Error(`${name} must use http://, https://, socks5://, or socks5h://`);
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 function requireChatId(name: string, value: unknown): number {

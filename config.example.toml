@@ -11,6 +11,11 @@ alert_chat_id = -1001234567890
 base_url = "http://127.0.0.1:8080"
 admin_api_key = ""
 
+[proxy]
+# 可选出站代理；支持 http://、https://、socks5://、socks5h://
+url = ""
+scope = [] # 可选："sub2api"、"telegram"、"openai"、"other"
+
 [monitor]
 # 可留空，启动后在 Telegram 群发送 /group 通过内联按钮选择
 group_id = ""
