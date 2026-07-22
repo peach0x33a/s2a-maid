@@ -3,6 +3,14 @@ import type { JsonObject } from "./types";
 const TELEGRAM_SAFE_TEXT_LENGTH = 3900;
 
 export type TemplateCommandAction = "show" | "new" | "invalid";
+export type AccountImportMode = "accounts" | "codex-agent" | "invalid";
+
+export function parseAccountImportMode(input: string): AccountImportMode {
+  const argument = input.trim().toLowerCase();
+  if (argument === "") return "accounts";
+  if (argument === "--codex-agent" || argument === "-ca") return "codex-agent";
+  return "invalid";
+}
 
 export function parseTemplateCommand(input: string): TemplateCommandAction {
   const argument = input.trim().toLowerCase();

@@ -6,6 +6,7 @@
 
 - 上传现有 Sub2API 账户文件生成可复用模板；
 - 将多种 ChatGPT/Codex 登录文件转换为 S2A 账户格式并创建账户；
+- 将 Web Session、Codex OAuth 或 S2A 账号转换为 Codex Agent Identity，并通过管理员 API 导入；
 - 自动解压 `/acc` 收到的 ZIP 压缩包，批量导入其中的 JSON 文件；
 - 通过 Telegram 内联按钮选择监控分组；
 - 查看分组账户、逐账户用量和可用账户总额度；
@@ -143,7 +144,8 @@ x-api-key: <admin-api-key>
 |---|---|
 | `/template` | 查看当前账户模板 |
 | `/template --new` | 上传现有 S2A 账户文件，使用第一条账户生成新模板并覆盖旧模板 |
-| `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建 Sub2API 账户 |
+| `/acc` | 上传账户、登录文件或 ZIP 压缩包，转换并创建普通 Sub2API 账户 |
+| `/acc --codex-agent`、`/acc -ca` | 转换并导入 Codex Agent Identity；继承模板设置并加入当前选中分组 |
 | `/list [分组ID] [--all\|--available\|--unavailable] [--sort status\|name\|id]` | 查看账户；默认按状态排序并优先显示可用账户 |
 | `/usage [分组ID]` | 查看可用账户用量；默认使用监听分组，也可临时指定其他分组 |
 | `/monitor` | 查看监控状态及不可用账户的 401、429、暂停等原因 |
@@ -202,6 +204,48 @@ Codex auth.json → S2A 账户格式
 有真实 `refresh_token` 时，不会把短期 access token 的过期时间当作账户过期时间。没有 refresh token 时，会根据 access token JWT 的 `exp` 设置 `expires_at`，并启用过期自动暂停。
 
 每个 Telegram 更新使用稳定的 `Idempotency-Key`，降低 Telegram 重试造成重复创建的风险。
+
+## Codex Agent Identity 导入
+
+发送 `/acc --codex-agent`（简写 `/acc -ca`）后，可以上传 ChatGPT Web Session、Codex OAuth `auth.json`、原生 S2A 账号、现有 Agent Identity、S2A 导出的 Agent Identity 账号文件，或包含这些 JSON 文件的 ZIP。Bot 会按 `codex-agent-identity` 协议生成独立 Ed25519 身份，再整理成可直接创建的 S2A account 对象：
+
+```json
+{
+  "name": "user@example.com",
+  "platform": "openai",
+  "type": "oauth",
+  "credentials": {
+    "auth_mode": "agentIdentity",
+    "agent_runtime_id": "agent-...",
+    "agent_private_key": "BASE64_PKCS8_ED25519_PRIVATE_KEY",
+    "chatgpt_account_id": "account-...",
+    "chatgpt_user_id": "user-...",
+    "email": "user@example.com",
+    "plan_type": "plus",
+    "chatgpt_account_is_fedramp": false,
+    "task_id": "task-...",
+    "model_mapping": {}
+  },
+  "proxy_id": 1,
+  "group_ids": [1],
+  "concurrency": 10,
+  "priority": 1,
+  "rate_multiplier": 1
+}
+```
+
+Bot 将该对象与全局模板深度合并，再调用 `POST /api/v1/admin/accounts` 创建账号。认证只使用配置中的 Sub2API 管理员专有密钥，并固定放在 `x-api-key` 请求头中，不使用 WebUI 登录态或 `Authorization: Bearer`。
+
+Agent Identity 导入要求：
+
+- 已使用 `/template --new` 设置全局模板；
+- 已使用 `/group` 选择当前导入分组；
+- 模板中的 `proxy_id`、`group_ids`、并发数、优先级、倍率、过期策略、`credentials.model_mapping` 和静态 `extra` 会覆盖到最终账号；
+- 当前选中分组会追加到模板 `group_ids` 并去重；
+- 上传 S2A Agent Identity 导出文件时，只读取其身份凭据；文件中的旧 `proxy_key`、模型映射和动态用量快照不会覆盖当前模板；
+- OAuth access/refresh/ID token 只用于身份注册，不写入最终 S2A Agent Identity 账号，也不写入日志或数据库。
+
+生成结果包含可复用私钥，应按密码处理。Telegram 群历史也可能保留用户上传的源文件，因此只能在受控群中使用。
 
 ## 用量与监控
 

@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { formatAccountTemplate, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "../src/messages";
+import { formatAccountTemplate, parseAccountImportMode, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "../src/messages";
+
+test("parses account import modes", () => {
+  expect(parseAccountImportMode("")).toBe("accounts");
+  expect(parseAccountImportMode(" --codex-agent ")).toBe("codex-agent");
+  expect(parseAccountImportMode("-ca")).toBe("codex-agent");
+  expect(parseAccountImportMode("codex-agent")).toBe("invalid");
+  expect(parseAccountImportMode("--unknown")).toBe("invalid");
+});
 
 test("parses template command actions", () => {
   expect(parseTemplateCommand("")).toBe("show");

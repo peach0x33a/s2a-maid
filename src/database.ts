@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { extractAccountTemplate } from "./accounts";
 import type { JsonObject } from "./types";
 
-export type InputMode = "template" | "accounts";
+export type InputMode = "template" | "accounts" | "codex-agent";
 
 export class Store {
   private readonly db: Database;

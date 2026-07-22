@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import { AccountInputError, extractAccountTemplate, mergeAndValidateAccount, parseAccountPayloadDetailed } from "./accounts";
 import { extractJsonFilesFromZip, isZipArchive } from "./archive";
+import { buildFinalCodexAgentAccount, CodexAgentInputError, convertCodexAgentInput, parseCodexAgentPayload } from "./codex-agent";
 import type { Store } from "./database";
 import {
   accountStatusSummary,
@@ -16,7 +17,7 @@ import {
 import type { UsageMonitor } from "./monitor";
 import { downloadTelegramFile } from "./telegram";
 import { extractUsageWindows, usageWindowsForDisplay } from "./usage";
-import { formatAccountTemplate, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "./messages";
+import { formatAccountTemplate, parseAccountImportMode, parseOptionalGroupId, parseTemplateCommand, splitTelegramText } from "./messages";
 import type { JsonObject } from "./types";
 
 export interface BotDependencies {
@@ -217,7 +218,16 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
   bot.command("acc", async (ctx) => {
     const chat = ctx.chat;
     if (!isAllowedGroup(chat, dependencies.allowedChatIds) || !ctx.from) return;
-    dependencies.store.setMode(chat.id, ctx.from.id, "accounts");
+    const importMode = parseAccountImportMode(ctx.match ?? "");
+    if (importMode === "invalid") {
+      await ctx.reply("参数无效。使用 /acc 导入 S2A 账户，或使用 /acc --codex-agent（简写 -ca）转换并导入 Codex Agent Identity。");
+      return;
+    }
+    dependencies.store.setMode(chat.id, ctx.from.id, importMode);
+    if (importMode === "codex-agent") {
+      await ctx.reply("请上传 Web Session、Codex auth.json、S2A 账户 JSON、现有 Agent Identity 或包含这些 JSON 的 ZIP。将转换为 Codex Agent Identity，并通过管理员 API 导入 Sub2API。");
+      return;
+    }
     await ctx.reply("请上传账户或登录文件，也可以上传包含 JSON 文件的 ZIP 压缩包。支持 S2A、ChatGPT Session、9router、Codex、AxonHub 和 Codex-Manager 格式。");
   });
 
@@ -230,7 +240,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
 
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入账户\n/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
+    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入 S2A 账户\n/acc --codex-agent（-ca）转换并导入 Codex Agent Identity\n/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
   });
 
   bot.on("message", async (ctx) => {
@@ -249,6 +259,43 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
         await ctx.reply("请发送 JSON 文本、JSON 文件或 ZIP 压缩包。");
         return;
       }
+      if (mode === "codex-agent") {
+        const template = dependencies.store.getTemplate();
+        if (!template) {
+          await ctx.reply("尚未设置账户模板，请先使用 /template --new。Codex Agent Identity 导入会继承模板中的代理和其他静态设置。");
+          return;
+        }
+        const selectedGroupId = dependencies.monitor.getGroupId();
+        if (!selectedGroupId) {
+          await ctx.reply("请先使用 /group 选择导入分组。Codex Agent Identity 会导入到当前选中的分组。");
+          return;
+        }
+        const inputs = input.files.flatMap((file) => {
+          try {
+            return parseCodexAgentPayload(file.text);
+          } catch (error) {
+            if (input.isArchive && error instanceof CodexAgentInputError) {
+              throw new CodexAgentInputError(`压缩包中的 ${file.name}：${error.message}`);
+            }
+            throw error;
+          }
+        });
+        await ctx.reply(`已识别 ${inputs.length} 条凭据，正在生成并导入 Codex Agent Identity……`);
+        for (const [index, source] of inputs.entries()) {
+          const converted = await convertCodexAgentInput(source);
+          const account = buildFinalCodexAgentAccount(
+            template,
+            converted.authJson,
+            selectedGroupId,
+            `Codex Agent Identity ${index + 1}`,
+          );
+          await dependencies.sub2api.createAccount(account, `telegram-codex-agent-${ctx.update.update_id}-${index}`);
+        }
+        dependencies.store.clearMode(chat.id, ctx.from.id);
+        await ctx.reply(`Codex Agent Identity 导入完成，共创建 ${inputs.length} 个账户。`);
+        return;
+      }
+
       const accounts: JsonObject[] = [];
       const conversions = new Map<string, number>();
       let nativeAccounts = 0;
@@ -309,7 +356,9 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
       dependencies.store.clearMode(chat.id, ctx.from.id);
       await ctx.reply(`账户创建完成，共创建 ${merged.length} 个账户。`);
     } catch (error) {
-      const message = error instanceof AccountInputError ? error.message : "账户导入失败，请检查文件内容、模板和 Sub2API 连接。";
+      const message = error instanceof AccountInputError || error instanceof CodexAgentInputError
+        ? error.message
+        : "账户导入失败，请检查文件内容、模板和 Sub2API 连接。";
       console.error("Account input failed:", error);
       await ctx.reply(message);
     }

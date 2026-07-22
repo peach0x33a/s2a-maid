@@ -54,6 +54,47 @@ test("summarizes usable and unavailable accounts by status code", () => {
   );
 });
 
+test("creates an Agent Identity account with x-api-key and the final S2A account body", async () => {
+  let captured: { url: URL; headers: Headers; body: Record<string, unknown> } | undefined;
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      captured = {
+        url: new URL(request.url),
+        headers: request.headers,
+        body: await request.json() as Record<string, unknown>,
+      };
+      return Response.json({ data: { id: 1 } });
+    },
+  });
+  try {
+    const client = new Sub2ApiClient(`http://127.0.0.1:${server.port}`, "admin-test-key");
+    await client.createAccount({
+      name: "person@example.com",
+      platform: "openai",
+      type: "oauth",
+      credentials: { auth_mode: "agentIdentity", agent_runtime_id: "runtime" },
+      proxy_id: 7,
+      group_ids: [3],
+      concurrency: 20,
+      priority: 9,
+    }, "identity-import-1");
+    expect(captured?.url.pathname).toBe("/api/v1/admin/accounts");
+    expect(captured?.headers.get("x-api-key")).toBe("admin-test-key");
+    expect(captured?.headers.get("authorization")).toBeNull();
+    expect(captured?.headers.get("idempotency-key")).toBe("identity-import-1");
+    expect(captured?.body).toMatchObject({
+      proxy_id: 7,
+      group_ids: [3],
+      concurrency: 20,
+      priority: 9,
+      credentials: { auth_mode: "agentIdentity", agent_runtime_id: "runtime" },
+    });
+  } finally {
+    server.stop(true);
+  }
+});
+
 test("loads every account page instead of stopping at the default first 20", async () => {
   const requestedPages: number[] = [];
   const server = Bun.serve({
