@@ -1,5 +1,4 @@
 import nodeFetch, { type RequestInit as NodeFetchRequestInit } from "node-fetch";
-import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 
 export const PROXY_SCOPES = ["sub2api", "telegram", "openai", "other"] as const;
@@ -9,10 +8,18 @@ export type ProxyScope = typeof PROXY_SCOPES[number];
 
 export function createProxyFetch(proxyUrl: string | null): typeof fetch {
   if (!proxyUrl) return fetch;
-  const agent = new URL(proxyUrl).protocol.startsWith("socks")
-    ? new SocksProxyAgent(proxyUrl)
-    : new HttpsProxyAgent(proxyUrl);
+  const protocol = new URL(proxyUrl).protocol;
 
+  // Bun's native fetch proxy option is the only reliable way in Bun.
+  // node-fetch + agent (https-proxy-agent / socks-proxy-agent) ignores
+  // the agent entirely in Bun's Node.js compat layer.
+  if (protocol === "http:" || protocol === "https:") {
+    return ((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      fetch(input, { ...init, proxy: proxyUrl })) as typeof fetch;
+  }
+
+  // SOCKS: node-fetch + socks-proxy-agent (same caveat — may not work in Bun)
+  const agent = new SocksProxyAgent(proxyUrl);
   return (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input;
     const response = await nodeFetch(url, {

@@ -18,7 +18,6 @@
   "dependencies": {
     "fflate": "^0.8.3",
     "grammy": "^1.44.0",
-    "https-proxy-agent": "^9.1.0",
     "libsodium-wrappers": "^0.8.4",
     "node-fetch": "2.7.0",
     "socks-proxy-agent": "^10.1.0"
