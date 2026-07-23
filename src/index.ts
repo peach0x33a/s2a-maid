@@ -54,6 +54,8 @@ registerBotHandlers(bot, {
   telegramProxyUrl,
   codexAgentFetch,
   monitor,
+  proxyUrl: config.proxyUrl,
+  proxyScopes: config.proxyScopes,
 });
 
 bot.catch((error) => console.error("grammY handler failed:", error));

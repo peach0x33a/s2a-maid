@@ -3,6 +3,8 @@ import { AccountInputError, extractAccountTemplate, mergeAndValidateAccount, par
 import { extractJsonFilesFromZip, isZipArchive } from "./archive";
 import { buildFinalCodexAgentAccount, CodexAgentInputError, convertCodexAgentInput, parseCodexAgentPayload } from "./codex-agent";
 import type { Store } from "./database";
+import { runNetCheck } from "./netcheck";
+import type { ProxyScope } from "./proxy";
 import {
   accountStatusSummary,
   filterAccounts,
@@ -38,6 +40,8 @@ export interface BotDependencies {
   telegramProxyUrl: string | null;
   codexAgentFetch: typeof fetch;
   monitor: UsageMonitor;
+  proxyUrl: string | null;
+  proxyScopes: Set<ProxyScope>;
 }
 
 export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): void {
@@ -248,9 +252,21 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
     await ctx.reply("已取消当前操作。");
   });
 
+  bot.command("netcheck", async (ctx) => {
+    if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
+    await ctx.reply("正在检测网络……");
+    const results = await runNetCheck(dependencies.proxyUrl, dependencies.proxyScopes);
+    const lines = results.map((r) => {
+      const ip = r.ip ?? (r.error ? "—" : "—");
+      const status = r.error ? `❌ ${r.error}` : "✅";
+      return `${r.label} · ${ip} · ${r.latencyMs}ms ${status}`;
+    });
+    await ctx.reply(lines.join("\n"));
+  });
+
   bot.command(["help", "start"], async (ctx) => {
     if (!isAllowedGroup(ctx.chat, dependencies.allowedChatIds)) return;
-    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入 S2A 账户\n/acc --codex-agent（-ca）转换并导入 Codex Agent Identity\n/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
+    await ctx.reply("可用命令：\n/template 查看账户模板\n/template --new 设置新模板\n/acc 导入 S2A 账户\n/acc --codex-agent（-ca）转换并导入 Codex Agent Identity\n/list [分组ID] [--all|--available|--unavailable] [--sort status|name|id] 查看账户\n/usage [分组ID] 查看可用账户用量\n/monitor 查看监控状态和不可用原因\n/group 选择监控分组\n/netcheck 检测网络连通性\n/cancel 取消当前操作\n\n/list 和 /usage 默认查询当前监听分组；指定分组 ID 只查询该分组，不会改变监听设置。");
   });
 
   bot.on("message", async (ctx) => {
