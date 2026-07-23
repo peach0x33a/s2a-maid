@@ -146,7 +146,7 @@ export function registerBotHandlers(bot: Bot, dependencies: BotDependencies): vo
           const lines = displayWindows.length > 0
             ? displayWindows.map((window) => `${window.label}: 剩余 ${window.remainingPercent.toFixed(1)}%`)
             : ["暂无可识别用量窗口"];
-          for (const window of windows) {
+          for (const window of displayWindows) {
             const total = totals.get(window.key) ?? { label: window.label, remaining: 0, accounts: 0 };
             total.remaining += window.remainingPercent;
             total.accounts += 1;
