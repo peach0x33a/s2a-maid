@@ -275,7 +275,14 @@ async function responseJson(response: Response, operation: string): Promise<Unkn
   } catch {
     payload = null;
   }
-  if (!response.ok) throw new CodexAgentInputError(`${operation}失败（HTTP ${response.status}）`);
+  if (!response.ok) {
+    const detail = typeof payload === "string"
+      ? payload.slice(0, 500)
+      : payload
+        ? JSON.stringify(payload).slice(0, 500)
+        : "(empty body)";
+    throw new CodexAgentInputError(`${operation}失败（HTTP ${response.status}）: ${detail}`);
+  }
   if (!isRecord(payload)) throw new CodexAgentInputError(`${operation}返回无效 JSON`);
   return payload;
 }
