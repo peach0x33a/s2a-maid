@@ -268,7 +268,7 @@ function extractIdentityClaims(...tokens: Array<string | undefined>): IdentityCl
   throw new CodexAgentInputError("认证 JSON 缺少 ChatGPT account/user identity claims");
 }
 
-async function responseJson(response: Response, operation: string): Promise<UnknownRecord> {
+async function responseJson(response: Response, operation: string, clientFetch?: typeof fetch): Promise<UnknownRecord> {
   let payload: unknown;
   try {
     payload = await response.json();
@@ -281,7 +281,16 @@ async function responseJson(response: Response, operation: string): Promise<Unkn
       : payload
         ? JSON.stringify(payload).slice(0, 500)
         : "(empty body)";
-    throw new CodexAgentInputError(`${operation}失败（HTTP ${response.status}）: ${detail}`);
+    let ipHint = "";
+    if (clientFetch) {
+      try {
+        const ipRes = await clientFetch("http://ddns.oray.com/checkip");
+        const ipText = await ipRes.text();
+        const match = /\b(?:\d{1,3}\.){3}\d{1,3}\b/.exec(ipText);
+        if (match) ipHint = ` · 出口IP: ${match[0]}`;
+      } catch { /* ignore */ }
+    }
+    throw new CodexAgentInputError(`${operation}失败（HTTP ${response.status}）: ${detail}${ipHint}`);
   }
   if (!isRecord(payload)) throw new CodexAgentInputError(`${operation}返回无效 JSON`);
   return payload;
@@ -343,7 +352,7 @@ async function refreshOAuth(refreshToken: string, fetcher: typeof fetch): Promis
       refresh_token: refreshToken,
     }),
   });
-  const payload = await responseJson(response, "刷新 OAuth");
+  const payload = await responseJson(response, "刷新 OAuth", fetcher);
   return {
     accessToken: requiredString(payload.access_token, "refresh access_token"),
     idToken: firstString(payload.id_token),
@@ -380,7 +389,7 @@ export async function convertCodexAgentInput(input: CodexAgentInput, fetcher: ty
       ttl: null,
     }),
   });
-  const runtime = await responseJson(runtimeResponse, "注册 Agent Identity");
+  const runtime = await responseJson(runtimeResponse, "注册 Agent Identity", fetcher);
   const runtimeId = requiredString(runtime.agent_runtime_id, "agent_runtime_id");
   const timestamp = utcTimestamp();
   const taskResponse = await fetcher(`${AUTH_BASE_URL}/api/accounts/v1/agent/${encodeURIComponent(runtimeId)}/task/register`, {
@@ -388,7 +397,7 @@ export async function convertCodexAgentInput(input: CodexAgentInput, fetcher: ty
     headers: { "Content-Type": "application/json", "User-Agent": "s2a-maid-codex-agent/1" },
     body: JSON.stringify({ timestamp, signature: registrationSignature(keyPair.privateKey, runtimeId, timestamp) }),
   });
-  const task = await responseJson(taskResponse, "注册 Agent Identity task");
+  const task = await responseJson(taskResponse, "注册 Agent Identity task", fetcher);
   const taskId = firstString(task.task_id, task.taskId) ?? (() => {
     const encrypted = firstString(task.encrypted_task_id, task.encryptedTaskId);
     if (!encrypted) throw new CodexAgentInputError("task 注册响应缺少 task_id");
