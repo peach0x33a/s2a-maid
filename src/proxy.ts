@@ -1,4 +1,5 @@
 import nodeFetch, { type RequestInit as NodeFetchRequestInit } from "node-fetch";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 
 export const PROXY_SCOPES = ["sub2api", "telegram", "openai", "other"] as const;
@@ -6,15 +7,12 @@ export const PROXY_PROTOCOLS = ["http:", "https:", "socks5:", "socks5h:"] as con
 
 export type ProxyScope = typeof PROXY_SCOPES[number];
 
-export function createProxyFetch(proxyUrl: string | null, baseFetch: typeof fetch = fetch): typeof fetch {
-  if (!proxyUrl) return baseFetch;
-  const protocol = new URL(proxyUrl).protocol;
-  if (protocol === "http:" || protocol === "https:") {
-    return ((input: Parameters<typeof fetch>[0], init?: BunFetchRequestInit) =>
-      baseFetch(input, { ...init, proxy: proxyUrl })) as typeof fetch;
-  }
+export function createProxyFetch(proxyUrl: string | null): typeof fetch {
+  if (!proxyUrl) return fetch;
+  const agent = new URL(proxyUrl).protocol.startsWith("socks")
+    ? new SocksProxyAgent(proxyUrl)
+    : new HttpsProxyAgent(proxyUrl);
 
-  const agent = new SocksProxyAgent(proxyUrl);
   return (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input;
     const response = await nodeFetch(url, {

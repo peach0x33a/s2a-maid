@@ -3,9 +3,8 @@ import { createProxyFetch } from "./proxy";
 export function createTelegramFetch(
   extraHeaders: HeadersInit,
   proxyUrl: string | null = null,
-  baseFetch: typeof fetch = fetch,
 ): typeof fetch {
-  const outboundFetch = createProxyFetch(proxyUrl, baseFetch);
+  const outboundFetch = createProxyFetch(proxyUrl);
   return ((input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     new Headers(extraHeaders).forEach((value, name) => headers.set(name, value));

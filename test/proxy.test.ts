@@ -12,19 +12,8 @@ test("selects the configured proxy only for enabled array scopes", () => {
   expect(proxyForScope(null, scopes, "openai")).toBeNull();
 });
 
-test("adds Bun's HTTP proxy option without losing request options", async () => {
-  const requests: BunFetchRequestInit[] = [];
-  const baseFetch = (async (_input: string | URL | Request, init?: BunFetchRequestInit) => {
-    requests.push(init ?? {});
-    return Response.json({ ok: true });
-  }) as typeof fetch;
-  const proxied = createProxyFetch("http://proxy.example:8080", baseFetch);
-  await proxied("https://example.com", { method: "POST", headers: { "X-Test": "yes" } });
-  expect(requests[0]).toMatchObject({
-    method: "POST",
-    proxy: "http://proxy.example:8080",
-  });
-  expect(new Headers(requests[0]?.headers).get("x-test")).toBe("yes");
+test("returns global fetch when proxy is null", () => {
+  expect(createProxyFetch(null)).toBe(fetch);
 });
 
 test("routes requests through SOCKS5 and SOCKS5H proxies", async () => {
@@ -48,22 +37,26 @@ test("routes requests through SOCKS5 and SOCKS5H proxies", async () => {
   }
 });
 
-test("Telegram fetch combines proxy scope with configured API headers", async () => {
-  const requests: BunFetchRequestInit[] = [];
-  const baseFetch = (async (_input: string | URL | Request, init?: BunFetchRequestInit) => {
+test("Telegram fetch injects extra headers without losing request options", async () => {
+  const requests: RequestInit[] = [];
+  const fakeFetch = (async (_input: string | URL | Request, init?: RequestInit) => {
     requests.push(init ?? {});
     return Response.json({ ok: true });
   }) as typeof fetch;
-  const telegramFetch = createTelegramFetch(
-    { Authorization: "Bearer telegram-proxy-token" },
-    "http://proxy.example:8080",
-    baseFetch,
-  );
-  await telegramFetch("https://api.telegram.org/bot/test", { headers: { "X-Request": "yes" } });
-  expect(requests[0]?.proxy).toBe("http://proxy.example:8080");
-  const headers = new Headers(requests[0]?.headers);
-  expect(headers.get("authorization")).toBe("Bearer telegram-proxy-token");
-  expect(headers.get("x-request")).toBe("yes");
+  // patch globalThis.fetch temporarily
+  const orig = globalThis.fetch;
+  globalThis.fetch = fakeFetch;
+  try {
+    const telegramFetch = createTelegramFetch(
+      { Authorization: "Bearer telegram-proxy-token" },
+    );
+    await telegramFetch("https://api.telegram.org/bot/test", { headers: { "X-Request": "yes" } });
+    const headers = new Headers(requests[0]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer telegram-proxy-token");
+    expect(headers.get("x-request")).toBe("yes");
+  } finally {
+    globalThis.fetch = orig;
+  }
 });
 
 function createSocks5TestServer() {

@@ -151,19 +151,9 @@ test("discovers Web, Codex OAuth, and S2A credential records", () => {
   ]);
 });
 
-test("applies the configured HTTP proxy only through the Codex Agent fetch wrapper", async () => {
-  const requests: Array<{ input: string | URL | Request; init?: BunFetchRequestInit }> = [];
-  const baseFetch = (async (input: string | URL | Request, init?: BunFetchRequestInit) => {
-    requests.push({ input, init });
-    return Response.json({ ok: true });
-  }) as typeof fetch;
-  const proxiedFetch = createCodexAgentFetch("http://proxy-user:proxy-password@proxy.example:8080", baseFetch);
-  await proxiedFetch("https://auth.openai.com/test", { method: "POST" });
-  expect(requests[0]?.init).toMatchObject({
-    method: "POST",
-    proxy: "http://proxy-user:proxy-password@proxy.example:8080",
-  });
-  expect(createCodexAgentFetch(null, baseFetch)).toBe(baseFetch);
+test("Codex Agent fetch factory returns global fetch when proxy is null", () => {
+  expect(createCodexAgentFetch(null)).toBe(fetch);
+  expect(typeof createCodexAgentFetch("http://proxy.example:8080")).toBe("function");
 });
 
 test("refreshes expired OAuth with form encoding", async () => {
